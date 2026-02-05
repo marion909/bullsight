@@ -428,6 +428,73 @@ print(f"Accuracy: {stats.accuracy():.1%}")
 
 ## 📚 Weiterführende Optimierungen
 
+### Test-Bilder für automatische Parameter-Optimierung
+
+**Neue Funktion**: Du kannst jetzt Test-Bilder mit bekannten Dart-Positionen sammeln!
+
+#### Test-Bilder erstellen:
+
+1. Wirf einen Dart
+2. Settings → Calibration → **"Capture Test Image"**
+3. Gib die Ground-Truth ein:
+   - Genaue Pixel-Position (X, Y)
+   - Segment (z.B. "T20", "D16", "Bull")
+   - Score-Wert
+   - Optionale Beschreibung
+
+Die Test-Bilder werden gespeichert in:
+- `config/test_images/` - Bilder
+- `config/test_images.json` - Ground-Truth Daten
+
+#### Automatische Parameter-Optimierung:
+
+Mit gesammelten Test-Bildern kannst du die **optimalen Parameter automatisch finden**:
+
+```bash
+python scripts/optimize_parameters.py
+```
+
+Das Script:
+- Testet viele Parameter-Kombinationen (Grid Search)
+- Bewertet jede Kombination anhand deiner Test-Bilder
+- Findet die Parameter mit höchster Erkennungsrate
+- Speichert beste Parameter in `config/optimized_parameters.json`
+
+**Empfehlung**: Sammle 10-20 Test-Bilder mit verschiedenen:
+- Dart-Positionen (Bull, Triple, Double, Single)
+- Lichtverhältnissen
+- Dart-Typen
+
+Je mehr Test-Bilder, desto besser die automatische Optimierung!
+
+#### Validierung:
+
+Prüfe die Qualität deiner aktuellen Parameter:
+
+```bash
+python scripts/validate_detection.py
+```
+
+Zeigt:
+- Detection Rate (% korrekt erkannt)
+- Durchschnittliche Positions-Abweichung
+- Detaillierte Ergebnisse pro Test-Bild
+- Qualitäts-Rating (🟢 EXCELLENT bis 🔴 NEEDS IMPROVEMENT)
+
+### Workflow für beste Ergebnisse:
+
+```
+1. Capture Reference Image (leeres Board)
+   ↓
+2. Capture 10-20 Test Images (mit Darts + Ground-Truth)
+   ↓
+3. python scripts/optimize_parameters.py
+   ↓
+4. Übernimm optimierte Parameter in deinen Code
+   ↓
+5. python scripts/validate_detection.py (Qualität prüfen)
+```
+
 ### Zukünftige Features (optional)
 - **Maschinelles Lernen**: YOLOv8 für Dart-Erkennung
 - **Mehrere Referenzbilder**: Für verschiedene Lichtsituationen

@@ -9,18 +9,97 @@ Author: Mario Neuhauser
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QSlider, QGroupBox, QMessageBox
+    QLabel, QSlider, QGroupBox, QMessageBox, QInputDialog, QDialog,
+    QDialogButtonBox, QFormLayout, QSpinBox, QLineEdit
 )
 from PySide6.QtCore import Qt, Signal, QPoint
 from PySide6.QtGui import QPainter, QPen, QPixmap, QImage, QColor
 import cv2
 import numpy as np
+import json
+from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 from src.calibration.board_mapper import CalibrationData, create_default_calibration
 
 if TYPE_CHECKING:
     from src.main import BullSightApp
+
+
+class GroundTruthDialog(QDialog):
+    """Dialog to enter ground truth data for test image."""
+    
+    def __init__(self, frame: np.ndarray, parent=None):
+        super().__init__(parent)
+        self.frame = frame
+        self.setWindowTitle("Enter Ground Truth Data")
+        self.setModal(True)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Setup dialog UI."""
+        layout = QVBoxLayout()
+        
+        # Show captured image (small preview)
+        height, width = self.frame.shape[:2]
+        scale = 400 / width
+        small_frame = cv2.resize(self.frame, None, fx=scale, fy=scale)
+        
+        q_image = QImage(small_frame.data, small_frame.shape[1], small_frame.shape[0],
+                        small_frame.shape[1] * 3, QImage.Format.Format_BGR888)
+        pixmap = QPixmap.fromImage(q_image)
+        
+        image_label = QLabel()
+        image_label.setPixmap(pixmap)
+        layout.addWidget(image_label)
+        
+        # Form for ground truth data
+        form_layout = QFormLayout()
+        
+        self.x_spin = QSpinBox()
+        self.x_spin.setRange(0, width)
+        self.x_spin.setValue(width // 2)
+        form_layout.addRow("Dart X Position (pixels):", self.x_spin)
+        
+        self.y_spin = QSpinBox()
+        self.y_spin.setRange(0, height)
+        self.y_spin.setValue(height // 2)
+        form_layout.addRow("Dart Y Position (pixels):", self.y_spin)
+        
+        self.segment_edit = QLineEdit()
+        self.segment_edit.setPlaceholderText("e.g., T20, D16, Bull, 5")
+        form_layout.addRow("Segment Hit:", self.segment_edit)
+        
+        self.score_spin = QSpinBox()
+        self.score_spin.setRange(0, 180)
+        self.score_spin.setValue(20)
+        form_layout.addRow("Score:", self.score_spin)
+        
+        self.description_edit = QLineEdit()
+        self.description_edit.setPlaceholderText("e.g., Center triple, Edge of board")
+        form_layout.addRow("Description (optional):", self.description_edit)
+        
+        layout.addLayout(form_layout)
+        
+        # Buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+        
+        self.setLayout(layout)
+    
+    def get_ground_truth(self) -> dict:
+        """Get entered ground truth data."""
+        return {
+            "x": self.x_spin.value(),
+            "y": self.y_spin.value(),
+            "segment": self.segment_edit.text() or "Unknown",
+            "score": self.score_spin.value(),
+            "description": self.description_edit.text() or ""
+        }
 
 
 class CalibrationScreen(QWidget):
@@ -107,6 +186,13 @@ class CalibrationScreen(QWidget):
         self.capture_ref_btn.setStyleSheet("background-color: #2196F3; color: white;")
         self.capture_ref_btn.clicked.connect(self.capture_reference_image)
         center_layout.addWidget(self.capture_ref_btn)
+        
+        self.capture_test_btn = QPushButton("Capture Test Image")
+        self.capture_test_btn.setMinimumHeight(60)
+        self.capture_test_btn.setStyleSheet("background-color: #FF9800; color: white;")
+        self.capture_test_btn.setToolTip("Capture image with dart and enter ground truth for parameter optimization")
+        self.capture_test_btn.clicked.connect(self.capture_test_image)
+        center_layout.addWidget(self.capture_test_btn)
         
         center_group.setLayout(center_layout)
         layout.addWidget(center_group)
@@ -300,6 +386,99 @@ class CalibrationScreen(QWidget):
         # Update display with new reference
         self.camera_image = reference_frame
         self.update_image_display()
+    
+    def capture_test_image(self) -> None:
+        """Capture test image with ground truth data for parameter optimization."""
+        # Ensure camera is running
+        if not self.app.start_camera():
+            QMessageBox.critical(
+                self,
+                "Camera Error",
+                "Could not access camera. Please check camera connection."
+            )
+            return
+        
+        # Show instructions
+        reply = QMessageBox.question(
+            self,
+            "Capture Test Image",
+            "Instructions:\n\n"
+            "1. Throw a dart at the board\n"
+            "2. Click Yes to capture\n"
+            "3. Enter the dart's position manually\n\n"
+            "This creates test data for automatic parameter optimization.\n\n"
+            "Ready to capture?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+        
+        # Capture frame
+        self.app.camera.trigger_autofocus()
+        import time
+        time.sleep(1)
+        
+        frame = self.app.camera.capture()
+        if frame is None:
+            QMessageBox.critical(self, "Capture Failed", "Could not capture frame.")
+            return
+        
+        # Show ground truth dialog
+        dialog = GroundTruthDialog(frame, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            ground_truth = dialog.get_ground_truth()
+            self._save_test_image(frame, ground_truth)
+    
+    def _save_test_image(self, frame: np.ndarray, ground_truth: dict) -> None:
+        """Save test image with ground truth data."""
+        # Create test_images directory
+        test_dir = Path("config/test_images")
+        test_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate filename with timestamp
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        image_filename = f"test_{timestamp}.jpg"
+        image_path = test_dir / image_filename
+        
+        # Save image
+        cv2.imwrite(str(image_path), frame)
+        
+        # Load or create test data JSON
+        json_path = Path("config/test_images.json")
+        if json_path.exists():
+            with open(json_path, 'r') as f:
+                test_data = json.load(f)
+        else:
+            test_data = {"test_images": []}
+        
+        # Add new test image
+        test_entry = {
+            "image_path": str(image_path),
+            "dart_x": ground_truth["x"],
+            "dart_y": ground_truth["y"],
+            "segment": ground_truth["segment"],
+            "score": ground_truth["score"],
+            "description": ground_truth["description"]
+        }
+        test_data["test_images"].append(test_entry)
+        
+        # Save JSON
+        with open(json_path, 'w') as f:
+            json.dump(test_data, f, indent=2)
+        
+        QMessageBox.information(
+            self,
+            "Test Image Saved",
+            f"Test image saved successfully!\n\n"
+            f"Image: {image_path}\n"
+            f"Position: ({ground_truth['x']}, {ground_truth['y']})\n"
+            f"Segment: {ground_truth['segment']}\n"
+            f"Score: {ground_truth['score']}\n\n"
+            f"Total test images: {len(test_data['test_images'])}\n\n"
+            f"Use 'python scripts/optimize_parameters.py' to find optimal parameters!"
+        )
     
     def on_image_click(self, event) -> None:
         """Handle click on image to set center."""
