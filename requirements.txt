@@ -1,25 +1,58 @@
+# BullSight Dependencies
+# Author: Mario Neuhauser
+# Python 3.11+ required
+
+# ============================================
 # Core Dependencies
-opencv-python==4.9.0.80
-numpy==1.26.4
-picamera2==0.3.17
+# ============================================
+opencv-python==4.9.0.80      # Computer vision for dart detection
+numpy==1.26.4                # Numerical operations
+picamera2==0.3.17            # Raspberry Pi camera interface (Pi only)
 
+# ============================================
 # UI Framework
-PySide6>=6.8.0
+# ============================================
+PySide6>=6.8.0               # Qt6 bindings (replaces PyQt6 for Python 3.13 compatibility)
 
+# ============================================
 # Testing
-pytest==8.0.0
-pytest-cov==4.1.0
-pytest-mock==3.12.0
-pytest-qt==4.3.1
+# ============================================
+pytest==8.4.2                # Test framework
+pytest-cov==7.0.0            # Coverage reporting
+pytest-mock==3.14.0          # Mocking support
+pytest-qt==4.3.1             # Qt testing utilities
+pytest-asyncio==1.2.0        # Async test support
 
-# Audio (optional, Phase 5)
-pygame==2.5.2
+# ============================================
+# Audio
+# ============================================
+pygame==2.5.2                # Sound effects and audio feedback
 
+# ============================================
 # Utilities
-pyyaml==6.0.1
-python-dotenv==1.0.0
+# ============================================
+pyyaml==6.0.1                # YAML configuration support
+python-dotenv==1.0.0         # Environment variable management
 
-# Development
-black==24.1.1
-flake8==7.0.0
-mypy==1.8.0
+# ============================================
+# Development Tools (Optional)
+# ============================================
+black==24.1.1                # Code formatting
+flake8==7.0.0                # Linting
+mypy==1.8.0                  # Type checking
+
+# ============================================
+# Installation Notes
+# ============================================
+# On Windows (Development):
+#   - picamera2 will fail (Raspberry Pi only)
+#   - Camera features require Raspberry Pi hardware
+#   - All UI and game logic features work
+#
+# On Raspberry Pi:
+#   - Full functionality including camera
+#   - Recommended: Raspberry Pi 4/5 with 4GB RAM
+#   - Camera Module v3 recommended
+#
+# To install:
+#   pip install -r requirements.txt
