@@ -192,7 +192,7 @@ class GameModeScreen(QWidget):
         players = player_screen.get_players()
         
         if not players:
-            from PyQt6.QtWidgets import QMessageBox
+            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(
                 self,
                 "No Players",
