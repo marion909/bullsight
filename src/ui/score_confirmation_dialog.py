@@ -38,6 +38,10 @@ class ScoreConfirmationDialog(QDialog):
         self.detected_throws = detected_throws
         self.corrected_throws: Optional[List[DartboardField]] = None
         self.selected_fields: List[DartboardField] = []
+        self.double_active = False
+        self.triple_active = False
+        self.double_btn = None
+        self.triple_btn = None
         
         self.setWindowTitle("Confirm Score")
         self.setModal(True)
@@ -255,6 +259,26 @@ class ScoreConfirmationDialog(QDialog):
         self.selected_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.selected_display)
         
+        # Modifier buttons
+        modifier_layout = QHBoxLayout()
+        modifier_layout.setSpacing(10)
+        
+        self.double_btn = QPushButton("Double (2x)")
+        self.double_btn.setMinimumHeight(70)
+        self.double_btn.setCheckable(True)
+        self.double_btn.setStyleSheet(self.get_modifier_style(False))
+        self.double_btn.clicked.connect(self.toggle_double)
+        modifier_layout.addWidget(self.double_btn)
+        
+        self.triple_btn = QPushButton("Triple (3x)")
+        self.triple_btn.setMinimumHeight(70)
+        self.triple_btn.setCheckable(True)
+        self.triple_btn.setStyleSheet(self.get_modifier_style(False))
+        self.triple_btn.clicked.connect(self.toggle_triple)
+        modifier_layout.addWidget(self.triple_btn)
+        
+        layout.addLayout(modifier_layout)
+        
         # Field selector (NO ScrollArea - all buttons visible)
         field_widget = QWidget()
         field_layout = QGridLayout(field_widget)
@@ -313,7 +337,7 @@ class ScoreConfirmationDialog(QDialog):
         layout.addLayout(action_layout)
     
     def generate_all_fields(self) -> List[DartboardField]:
-        """Generate all possible dartboard fields."""
+        """Generate all possible dartboard fields (singles only, modifiers applied on click)."""
         fields = []
         
         # Miss
@@ -325,16 +349,12 @@ class ScoreConfirmationDialog(QDialog):
         # Bull
         fields.append(DartboardField(segment=25, multiplier=1, score=25, zone="bull"))
         
-        # All segments
+        # All segments (singles only)
         segments = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5]
         
         for segment in segments:
-            # Single
+            # Single only - multipliers are applied via modifier buttons
             fields.append(DartboardField(segment=segment, multiplier=1, score=segment, zone="single"))
-            # Double
-            fields.append(DartboardField(segment=segment, multiplier=2, score=segment*2, zone="double"))
-            # Triple
-            fields.append(DartboardField(segment=segment, multiplier=3, score=segment*3, zone="triple"))
         
         return fields
     
@@ -353,11 +373,7 @@ class ScoreConfirmationDialog(QDialog):
             color = "#FFD700"
         elif field.zone == "bull":
             color = "#FFA500"
-        elif field.zone == "triple":
-            color = "#4CAF50"
-        elif field.zone == "double":
-            color = "#2196F3"
-        else:
+        else:  # Singles
             color = "#9E9E9E"
         
         btn.setStyleSheet(f"""
@@ -393,9 +409,14 @@ class ScoreConfirmationDialog(QDialog):
             return f"{field.segment}\n{field.score}"
     
     def select_field(self, field: DartboardField):
-        """Handle field selection."""
+        """Handle field selection with modifier application."""
         if len(self.selected_fields) < 3:
-            self.selected_fields.append(field)
+            # Apply modifiers
+            final_field = self.apply_modifiers(field)
+            self.selected_fields.append(final_field)
+            
+            # Reset modifiers after selection
+            self.reset_modifiers()
             
             # Update display
             total_score = sum(f.score for f in self.selected_fields)
@@ -427,11 +448,91 @@ class ScoreConfirmationDialog(QDialog):
         else:
             return f"{field.segment}"
     
+    def toggle_double(self):
+        """Toggle double modifier."""
+        self.double_active = self.double_btn.isChecked()
+        if self.double_active:
+            self.triple_active = False
+            self.triple_btn.setChecked(False)
+            self.triple_btn.setStyleSheet(self.get_modifier_style(False))
+        self.double_btn.setStyleSheet(self.get_modifier_style(self.double_active))
+    
+    def toggle_triple(self):
+        """Toggle triple modifier."""
+        self.triple_active = self.triple_btn.isChecked()
+        if self.triple_active:
+            self.double_active = False
+            self.double_btn.setChecked(False)
+            self.double_btn.setStyleSheet(self.get_modifier_style(False))
+        self.triple_btn.setStyleSheet(self.get_modifier_style(self.triple_active))
+    
+    def get_modifier_style(self, active: bool) -> str:
+        """Get stylesheet for modifier button."""
+        if active:
+            return """
+                QPushButton {
+                    font-size: 18px;
+                    font-weight: bold;
+                    background-color: #FF9800;
+                    color: white;
+                    border: 3px solid #F57C00;
+                    border-radius: 5px;
+                }
+            """
+        else:
+            return """
+                QPushButton {
+                    font-size: 18px;
+                    font-weight: bold;
+                    background-color: #607D8B;
+                    color: white;
+                    border: 2px solid #455A64;
+                    border-radius: 5px;
+                }
+                QPushButton:hover {
+                    background-color: #546E7A;
+                }
+            """
+    
+    def apply_modifiers(self, field: DartboardField) -> DartboardField:
+        """Apply active modifiers to field."""
+        # Miss, Bull's Eye, Bull can't be modified
+        if field.zone in ["miss", "bull_eye", "bull"]:
+            return field
+        
+        # Apply modifier
+        if self.triple_active:
+            return DartboardField(
+                segment=field.segment,
+                multiplier=3,
+                score=field.segment * 3,
+                zone="triple"
+            )
+        elif self.double_active:
+            return DartboardField(
+                segment=field.segment,
+                multiplier=2,
+                score=field.segment * 2,
+                zone="double"
+            )
+        else:
+            return field
+    
+    def reset_modifiers(self):
+        """Reset all modifiers after field selection."""
+        self.double_active = False
+        self.triple_active = False
+        self.double_btn.setChecked(False)
+        self.triple_btn.setChecked(False)
+        self.double_btn.setStyleSheet(self.get_modifier_style(False))
+        self.triple_btn.setStyleSheet(self.get_modifier_style(False))
+    
     def clear_selection(self):
         """Clear all selected fields."""
         self.selected_fields.clear()
         self.selected_display.setText("Selected: 0 / 3")
         self.submit_btn.setEnabled(False)
+        self.reset_modifiers()
     
     def submit_correction(self):
         """Submit corrected throws."""
