@@ -45,8 +45,8 @@ class ScoreConfirmationDialog(QDialog):
         
         self.setWindowTitle("Confirm Score")
         self.setModal(True)
-        self.setMinimumWidth(1000)
-        self.setMinimumHeight(700)
+        self.setMinimumWidth(1100)
+        self.setMinimumHeight(800)
         
         self.setup_ui()
     
@@ -248,30 +248,31 @@ class ScoreConfirmationDialog(QDialog):
         title = QLabel("Select 3 Throws")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = QFont()
-        font.setPointSize(20)
+        font.setPointSize(16)
         font.setBold(True)
         title.setFont(font)
         layout.addWidget(title)
         
         # Selected throws display
         self.selected_display = QLabel("Selected: 0 / 3")
-        self.selected_display.setStyleSheet("font-size: 16px; font-weight: bold; color: #2196F3;")
+        self.selected_display.setStyleSheet("font-size: 18px; font-weight: bold; color: #2196F3; padding: 5px;")
         self.selected_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.selected_display)
         
         # Modifier buttons
         modifier_layout = QHBoxLayout()
-        modifier_layout.setSpacing(10)
+        modifier_layout.setSpacing(15)
+        modifier_layout.setContentsMargins(20, 10, 20, 10)
         
-        self.double_btn = QPushButton("Double (2x)")
-        self.double_btn.setMinimumHeight(70)
+        self.double_btn = QPushButton("DOUBLE (2x)")
+        self.double_btn.setMinimumHeight(90)
         self.double_btn.setCheckable(True)
         self.double_btn.setStyleSheet(self.get_modifier_style(False))
         self.double_btn.clicked.connect(self.toggle_double)
         modifier_layout.addWidget(self.double_btn)
         
-        self.triple_btn = QPushButton("Triple (3x)")
-        self.triple_btn.setMinimumHeight(70)
+        self.triple_btn = QPushButton("TRIPLE (3x)")
+        self.triple_btn.setMinimumHeight(90)
         self.triple_btn.setCheckable(True)
         self.triple_btn.setStyleSheet(self.get_modifier_style(False))
         self.triple_btn.clicked.connect(self.toggle_triple)
@@ -282,8 +283,8 @@ class ScoreConfirmationDialog(QDialog):
         # Field selector (NO ScrollArea - all buttons visible)
         field_widget = QWidget()
         field_layout = QGridLayout(field_widget)
-        field_layout.setSpacing(5)
-        field_layout.setContentsMargins(5, 5, 5, 5)
+        field_layout.setSpacing(10)
+        field_layout.setContentsMargins(15, 10, 15, 10)
         
         # Create all possible fields
         fields = self.generate_all_fields()
@@ -295,7 +296,7 @@ class ScoreConfirmationDialog(QDialog):
             field_layout.addWidget(btn, row, col)
             
             col += 1
-            if col >= 6:  # 6 buttons per row
+            if col >= 5:  # 5 buttons per row for larger buttons
                 col = 0
                 row += 1
         
@@ -305,27 +306,35 @@ class ScoreConfirmationDialog(QDialog):
         action_layout = QHBoxLayout()
         
         clear_btn = QPushButton("Clear Selection")
-        clear_btn.setMinimumHeight(60)
+        clear_btn.setMinimumHeight(75)
         clear_btn.setStyleSheet("""
             QPushButton {
-                font-size: 16px;
+                font-size: 18px;
+                font-weight: bold;
                 background-color: #9E9E9E;
                 color: white;
-                border-radius: 5px;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: #757575;
             }
         """)
         clear_btn.clicked.connect(self.clear_selection)
         action_layout.addWidget(clear_btn)
         
         self.submit_btn = QPushButton("Submit Correction")
-        self.submit_btn.setMinimumHeight(60)
+        self.submit_btn.setMinimumHeight(75)
         self.submit_btn.setEnabled(False)
         self.submit_btn.setStyleSheet("""
             QPushButton {
-                font-size: 16px;
+                font-size: 18px;
+                font-weight: bold;
                 background-color: #4CAF50;
                 color: white;
-                border-radius: 5px;
+                border-radius: 8px;
+            }
+            QPushButton:hover:enabled {
+                background-color: #45a049;
             }
             QPushButton:disabled {
                 background-color: #cccccc;
@@ -363,8 +372,9 @@ class ScoreConfirmationDialog(QDialog):
         text = self.format_field_button_text(field)
         
         btn = QPushButton(text)
-        btn.setMinimumHeight(60)
-        btn.setMinimumWidth(100)
+        btn.setMinimumHeight(85)
+        btn.setMinimumWidth(140)
+        btn.setMaximumWidth(200)
         
         # Color coding
         if field.zone == "miss":
@@ -378,14 +388,19 @@ class ScoreConfirmationDialog(QDialog):
         
         btn.setStyleSheet(f"""
             QPushButton {{
-                font-size: 16px;
+                font-size: 22px;
                 font-weight: bold;
                 background-color: {color};
                 color: white;
-                border-radius: 5px;
+                border-radius: 8px;
+                border: 2px solid rgba(0,0,0,0.2);
             }}
             QPushButton:hover {{
-                opacity: 0.8;
+                background-color: {self.lighten_color(color)};
+                border: 3px solid rgba(0,0,0,0.4);
+            }}
+            QPushButton:pressed {{
+                background-color: {self.darken_color(color)};
             }}
         """)
         
@@ -471,26 +486,27 @@ class ScoreConfirmationDialog(QDialog):
         if active:
             return """
                 QPushButton {
-                    font-size: 18px;
+                    font-size: 24px;
                     font-weight: bold;
                     background-color: #FF9800;
                     color: white;
-                    border: 3px solid #F57C00;
-                    border-radius: 5px;
+                    border: 4px solid #F57C00;
+                    border-radius: 8px;
                 }
             """
         else:
             return """
                 QPushButton {
-                    font-size: 18px;
+                    font-size: 24px;
                     font-weight: bold;
                     background-color: #607D8B;
                     color: white;
                     border: 2px solid #455A64;
-                    border-radius: 5px;
+                    border-radius: 8px;
                 }
                 QPushButton:hover {
                     background-color: #546E7A;
+                    border: 3px solid #37474F;
                 }
             """
     
@@ -526,6 +542,25 @@ class ScoreConfirmationDialog(QDialog):
         self.triple_btn.setChecked(False)
         self.double_btn.setStyleSheet(self.get_modifier_style(False))
         self.triple_btn.setStyleSheet(self.get_modifier_style(False))
+    
+    def lighten_color(self, hex_color: str) -> str:
+        """Lighten a hex color for hover effect."""
+        # Simple lightening - increase RGB values by 20
+        hex_color = hex_color.lstrip('#')
+        r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+        r = min(255, r + 30)
+        g = min(255, g + 30)
+        b = min(255, b + 30)
+        return f"#{r:02x}{g:02x}{b:02x}"
+    
+    def darken_color(self, hex_color: str) -> str:
+        """Darken a hex color for pressed effect."""
+        hex_color = hex_color.lstrip('#')
+        r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+        r = max(0, r - 30)
+        g = max(0, g - 30)
+        b = max(0, b - 30)
+        return f"#{r:02x}{g:02x}{b:02x}"
     
     def clear_selection(self):
         """Clear all selected fields."""
