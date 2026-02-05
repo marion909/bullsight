@@ -17,10 +17,19 @@ BullSight verwendet **differenzbasierte Computer Vision** (nicht Machine Learnin
 
 ### Methode A: Über die UI (empfohlen)
 
-```python
-# Kommender Feature - wird noch implementiert
-# Settings → Calibration → "Capture Reference Image"
-```
+1. Starte BullSight: `./run.sh` (Linux/Raspberry Pi) oder `.\run.bat` (Windows)
+2. Navigiere zu **Settings** → **Calibration**
+3. Stelle sicher, dass das Dartboard **komplett leer** ist (keine Darts!)
+4. Klicke auf **"Capture Reference Image"**
+5. Bestätige den Dialog
+6. Warte 3 Sekunden während die Kamera fokussiert
+7. ✅ Referenzbild wird automatisch gespeichert nach `config/reference_board.jpg`
+
+Die UI-Methode:
+- Triggert automatisch Autofokus
+- Nimmt 10 Frames und wählt das stabilste
+- Speichert direkt im korrekten Format
+- Zeigt Erfolgsmeldung mit Speicherort
 
 ### Methode B: Manuell via Python
 

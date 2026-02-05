@@ -102,6 +102,12 @@ class CalibrationScreen(QWidget):
         self.center_btn.clicked.connect(self.enable_center_selection)
         center_layout.addWidget(self.center_btn)
         
+        self.capture_ref_btn = QPushButton("Capture Reference Image")
+        self.capture_ref_btn.setMinimumHeight(60)
+        self.capture_ref_btn.setStyleSheet("background-color: #2196F3; color: white;")
+        self.capture_ref_btn.clicked.connect(self.capture_reference_image)
+        center_layout.addWidget(self.capture_ref_btn)
+        
         center_group.setLayout(center_layout)
         layout.addWidget(center_group)
         
@@ -203,6 +209,97 @@ class CalibrationScreen(QWidget):
         self.selecting_center = True
         self.center_btn.setText("Click on Bull's Eye...")
         self.center_btn.setStyleSheet("background-color: #FFC107; color: black;")
+    
+    def capture_reference_image(self) -> None:
+        """Capture and save reference image for dart detection."""
+        # Ensure camera is running
+        if not self.app.start_camera():
+            QMessageBox.critical(
+                self,
+                "Camera Error",
+                "Could not access camera. Please check camera connection."
+            )
+            return
+        
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Capture Reference Image",
+            "Make sure the dartboard is COMPLETELY EMPTY (no darts!)\n\n"
+            "The camera will capture in 3 seconds.\n"
+            "Ready to capture?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+        
+        # Visual countdown
+        from PySide6.QtCore import QTimer
+        import time
+        
+        self.capture_ref_btn.setText("Capturing in 3...")
+        QTimer.singleShot(1000, lambda: self.capture_ref_btn.setText("Capturing in 2..."))
+        QTimer.singleShot(2000, lambda: self.capture_ref_btn.setText("Capturing in 1..."))
+        QTimer.singleShot(3000, self._perform_capture)
+    
+    def _perform_capture(self) -> None:
+        """Perform the actual capture and save."""
+        import time
+        from pathlib import Path
+        
+        # Trigger autofocus and wait for stabilization
+        self.app.camera.trigger_autofocus()
+        time.sleep(0.5)
+        
+        # Capture multiple frames and select the best one
+        frames = []
+        for i in range(10):
+            frame = self.app.camera.capture()
+            if frame is not None:
+                frames.append(frame)
+            time.sleep(0.1)
+        
+        if not frames:
+            QMessageBox.critical(
+                self,
+                "Capture Failed",
+                "Could not capture frames from camera."
+            )
+            self.capture_ref_btn.setText("Capture Reference Image")
+            return
+        
+        # Use middle frame (most stable)
+        reference_frame = frames[len(frames) // 2]
+        
+        # Save to config directory
+        config_dir = Path("config")
+        config_dir.mkdir(exist_ok=True)
+        reference_path = config_dir / "reference_board.jpg"
+        
+        # Save image
+        cv2.imwrite(str(reference_path), reference_frame)
+        
+        # Update dart detector with new reference
+        if hasattr(self.app, 'detector'):
+            self.app.detector.set_reference_image(reference_frame)
+            self.app.detector.save_reference_to_file(str(reference_path))
+        
+        # Show success message
+        QMessageBox.information(
+            self,
+            "Reference Captured",
+            f"Reference image saved successfully!\n\n"
+            f"Saved to: {reference_path}\n\n"
+            f"You can now use this for dart detection optimization."
+        )
+        
+        # Reset button
+        self.capture_ref_btn.setText("Capture Reference Image")
+        
+        # Update display with new reference
+        self.camera_image = reference_frame
+        self.update_image_display()
     
     def on_image_click(self, event) -> None:
         """Handle click on image to set center."""
