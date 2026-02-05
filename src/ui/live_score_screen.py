@@ -10,14 +10,15 @@ Author: Mario Neuhauser
 import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QMessageBox
+    QPushButton, QFrame, QMessageBox, QDialog
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 from src.game.game_engine import GameState
 from src.calibration.board_mapper import DartboardField
+from src.ui.score_confirmation_dialog import ScoreConfirmationDialog
 
 if TYPE_CHECKING:
     from src.main import BullSightApp
@@ -54,6 +55,9 @@ class LiveScoreScreen(QWidget):
         # Detection timer
         self.detection_timer = QTimer()
         self.detection_timer.timeout.connect(self.check_for_dart)
+        
+        # Track current round throws for confirmation
+        self.current_round_throws: List[DartboardField] = []
         
         self.setup_ui()
     
@@ -232,6 +236,9 @@ class LiveScoreScreen(QWidget):
         # Display dart
         self.dart_display.setText(self.format_field(field))
         
+        # Track throw for confirmation
+        self.current_round_throws.append(field)
+        
         # Record in game engine
         is_complete = self.app.game.record_dart(field)
         
@@ -300,6 +307,32 @@ class LiveScoreScreen(QWidget):
     
     def handle_round_complete(self) -> None:
         """Handle round completion."""
+        # Stop detection during confirmation
+        self.detection_timer.stop()
+        
+        # Show confirmation dialog
+        dialog = ScoreConfirmationDialog(self.current_round_throws, self)
+        result = dialog.exec()
+        
+        if result == QDialog.DialogCode.Accepted:
+            final_throws = dialog.get_final_throws()
+            
+            # If corrected, update game engine
+            if dialog.corrected_throws is not None:
+                # Undo current round
+                self.app.game.undo_round()
+                
+                # Re-record with corrected throws
+                for throw in final_throws:
+                    self.app.game.record_dart(throw)
+                
+                # Update UI with corrected throws
+                self.update_scores()
+        
+        # Clear round throws for next player
+        self.current_round_throws.clear()
+        
+        # Check for bust or checkout
         if self.app.game.current_round.is_bust:
             self.dart_display.setText("BUST!")
             self.dart_display.setStyleSheet("font-size: 48px; color: #f44336;")
@@ -314,7 +347,7 @@ class LiveScoreScreen(QWidget):
         self.round_label.setText(f"Round: {current_player.rounds_played + 1}")
         
         # Reset for next player
-        QTimer.singleShot(2000, self.prepare_next_player)
+        QTimer.singleShot(1000, self.prepare_next_player)
     
     def prepare_next_player(self) -> None:
         """Prepare UI for next player."""
@@ -322,6 +355,9 @@ class LiveScoreScreen(QWidget):
         self.dart_display.setText("Waiting for dart...")
         self.dart_display.setStyleSheet("font-size: 48px; color: #4CAF50;")
         self.darts_remaining_label.setText("Darts: 0 / 3")
+        
+        # Restart detection
+        self.detection_timer.start(500)
     
     def update_scores(self) -> None:
         """Update player score display."""

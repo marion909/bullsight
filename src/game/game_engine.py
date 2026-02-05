@@ -391,6 +391,50 @@ class GameEngine:
         
         return False
     
+    def undo_round(self) -> None:
+        """
+        Undo the current round (for score correction).
+        
+        Reverts all changes made in the current round including:
+        - Player score
+        - Darts thrown count
+        - Round statistics
+        """
+        if self.current_round is None or len(self.current_round.darts) == 0:
+            logger.warning("No round to undo")
+            return
+        
+        player = self.get_current_player()
+        
+        # Revert player score
+        if self.mode in [GameMode.GAME_301, GameMode.GAME_501, GameMode.GAME_701]:
+            # For countdown games, add back the score that was subtracted
+            round_score = sum(dart.field.score for dart in self.current_round.darts)
+            player.score += round_score
+            logger.info(f"Reverted {player.name} score to {player.score}")
+        
+        # Revert darts thrown count
+        player.darts_thrown -= len(self.current_round.darts)
+        
+        # Revert statistics
+        for dart in self.current_round.darts:
+            field = dart.field
+            stats = player.statistics
+            
+            stats["total_score"] -= field.score
+            
+            if field.zone == "bull_eye" or field.zone == "bull":
+                stats["bulls_hit"] = max(0, stats["bulls_hit"] - 1)
+            elif field.zone == "triple":
+                stats["triples_hit"] = max(0, stats["triples_hit"] - 1)
+            elif field.zone == "double":
+                stats["doubles_hit"] = max(0, stats["doubles_hit"] - 1)
+        
+        # Clear current round
+        self.current_round = Round(player_id=player.id, round_number=player.rounds_played)
+        
+        logger.info(f"Undone round for {player.name}")
+    
     def end_game(self, winner: Player) -> None:
         """
         End the game with a winner.
