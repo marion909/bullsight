@@ -9,15 +9,18 @@ Author: Mario Neuhauser
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QSlider, QGroupBox
+    QLabel, QSlider, QGroupBox, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint
 from PyQt6.QtGui import QPainter, QPen, QPixmap, QImage, QColor
 import cv2
 import numpy as np
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from src.calibration.board_mapper import CalibrationData, create_default_calibration
+
+if TYPE_CHECKING:
+    from src.main import BullSightApp
 
 
 class CalibrationScreen(QWidget):
@@ -33,16 +36,18 @@ class CalibrationScreen(QWidget):
     
     calibration_complete = pyqtSignal(CalibrationData)
     
-    def __init__(self, camera_image: np.ndarray):
+    def __init__(self, app: 'BullSightApp'):
         """
         Initialize calibration screen.
         
         Args:
-            camera_image: Current camera image for calibration overlay
+            app: Main application instance
         """
         super().__init__()
-        self.camera_image = camera_image
-        self.image_height, self.image_width = camera_image.shape[:2]
+        self.app = app
+        self.camera_image: Optional[np.ndarray] = None
+        self.image_height = 480
+        self.image_width = 640
         
         # State
         self.selecting_center = False
@@ -250,6 +255,19 @@ class CalibrationScreen(QWidget):
     
     def update_image_display(self) -> None:
         """Update image with calibration overlay."""
+        if self.camera_image is None:
+            # Try to capture from camera
+            if self.app.start_camera():
+                self.camera_image = self.app.camera.capture()
+        
+        if self.camera_image is None:
+            # Show placeholder
+            self.image_label.setText("No camera image available\nPlease connect camera")
+            return
+        
+        # Update dimensions
+        self.image_height, self.image_width = self.camera_image.shape[:2]
+        
         # Copy image
         display_image = self.camera_image.copy()
         
@@ -301,4 +319,23 @@ class CalibrationScreen(QWidget):
     
     def save_calibration(self) -> None:
         """Save and emit calibration."""
+        # Apply to main app's board mapper
+        self.app.mapper.calibrate(self.calibration)
+        
+        # Save to file
+        if self.app.save_calibration():
+            QMessageBox.information(
+                self,
+                "Calibration Saved",
+                "Calibration has been saved successfully."
+            )
+        
+        # Emit signal
         self.calibration_complete.emit(self.calibration)
+        
+        # Return to start screen
+        self.app.show_screen("start")
+    
+    def cancel_calibration(self) -> None:
+        """Cancel calibration and return."""
+        self.app.show_screen("start")

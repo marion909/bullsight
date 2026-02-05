@@ -406,6 +406,18 @@ class GameEngine:
         
         logger.info(f"Game over! {winner.name} wins! Duration: {duration:.1f}s")
     
+    def pause_game(self) -> None:
+        """Pause the game."""
+        if self.state in [GameState.IN_PROGRESS, GameState.WAITING_FOR_DART]:
+            self.state = GameState.PAUSED
+            logger.info("Game paused")
+    
+    def resume_game(self) -> None:
+        """Resume the game from pause."""
+        if self.state == GameState.PAUSED:
+            self.state = GameState.WAITING_FOR_DART
+            logger.info("Game resumed")
+    
     def next_player(self) -> None:
         """Advance to next player's turn."""
         self.current_player_index = (self.current_player_index + 1) % len(self.players)
