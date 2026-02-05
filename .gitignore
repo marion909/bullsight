@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/*.log
+
+# Config (if contains secrets)
+config/local.yaml
+
+# Assets (large files)
+assets/images/*.jpg
+assets/images/*.png
+
+# OS
+.DS_Store
+Thumbs.db

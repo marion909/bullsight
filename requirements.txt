@@ -1,0 +1,26 @@
+# Core Dependencies
+opencv-python==4.9.0.80
+numpy==1.26.4
+picamera2==0.3.17
+
+# UI Framework
+PyQt6==6.6.1
+PyQt6-Qt6==6.6.1
+
+# Testing
+pytest==8.0.0
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+pytest-qt==4.3.1
+
+# Audio (optional, Phase 5)
+pygame==2.5.2
+
+# Utilities
+pyyaml==6.0.1
+python-dotenv==1.0.0
+
+# Development
+black==24.1.1
+flake8==7.0.0
+mypy==1.8.0
