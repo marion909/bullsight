@@ -326,6 +326,9 @@ class LiveScoreScreen(QWidget):
                 for throw in final_throws:
                     self.app.game.record_dart(throw)
                 
+                # Complete the corrected round
+                self.app.game.complete_round()
+                
                 # Update UI with corrected throws
                 self.update_scores()
         

@@ -41,20 +41,22 @@ class ScoreConfirmationDialog(QDialog):
         
         self.setWindowTitle("Confirm Score")
         self.setModal(True)
-        self.setMinimumWidth(800)
-        self.setMinimumHeight(600)
+        self.setMinimumWidth(1000)
+        self.setMinimumHeight(700)
         
         self.setup_ui()
     
     def setup_ui(self):
         """Setup dialog UI."""
         layout = QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(5)
         
         # Title
         title = QLabel("Round Complete - Confirm Score")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = QFont()
-        font.setPointSize(24)
+        font.setPointSize(20)
         font.setBold(True)
         title.setFont(font)
         layout.addWidget(title)
@@ -235,28 +237,29 @@ class ScoreConfirmationDialog(QDialog):
         # Clear current layout
         self.setLayout(QVBoxLayout())
         layout = self.layout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(5)
         
         # Title
         title = QLabel("Select 3 Throws")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = QFont()
-        font.setPointSize(24)
+        font.setPointSize(20)
         font.setBold(True)
         title.setFont(font)
         layout.addWidget(title)
         
         # Selected throws display
         self.selected_display = QLabel("Selected: 0 / 3")
-        self.selected_display.setStyleSheet("font-size: 18px; font-weight: bold; color: #2196F3;")
+        self.selected_display.setStyleSheet("font-size: 16px; font-weight: bold; color: #2196F3;")
         self.selected_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.selected_display)
         
-        # Scrollable field selector
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        
+        # Field selector (NO ScrollArea - all buttons visible)
         field_widget = QWidget()
         field_layout = QGridLayout(field_widget)
+        field_layout.setSpacing(5)
+        field_layout.setContentsMargins(5, 5, 5, 5)
         
         # Create all possible fields
         fields = self.generate_all_fields()
@@ -268,12 +271,11 @@ class ScoreConfirmationDialog(QDialog):
             field_layout.addWidget(btn, row, col)
             
             col += 1
-            if col >= 5:  # 5 buttons per row for larger buttons
+            if col >= 6:  # 6 buttons per row
                 col = 0
                 row += 1
         
-        scroll_area.setWidget(field_widget)
-        layout.addWidget(scroll_area)
+        layout.addWidget(field_widget)
         
         # Action buttons
         action_layout = QHBoxLayout()
@@ -341,8 +343,8 @@ class ScoreConfirmationDialog(QDialog):
         text = self.format_field_button_text(field)
         
         btn = QPushButton(text)
-        btn.setMinimumHeight(80)  # Increased from 50
-        btn.setMinimumWidth(120)  # Increased from 90
+        btn.setMinimumHeight(60)
+        btn.setMinimumWidth(100)
         
         # Color coding
         if field.zone == "miss":
@@ -360,7 +362,7 @@ class ScoreConfirmationDialog(QDialog):
         
         btn.setStyleSheet(f"""
             QPushButton {{
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: bold;
                 background-color: {color};
                 color: white;
