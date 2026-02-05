@@ -268,7 +268,7 @@ class ScoreConfirmationDialog(QDialog):
             field_layout.addWidget(btn, row, col)
             
             col += 1
-            if col >= 8:  # 8 buttons per row
+            if col >= 5:  # 5 buttons per row for larger buttons
                 col = 0
                 row += 1
         
@@ -341,8 +341,8 @@ class ScoreConfirmationDialog(QDialog):
         text = self.format_field_button_text(field)
         
         btn = QPushButton(text)
-        btn.setMinimumHeight(50)
-        btn.setMinimumWidth(90)
+        btn.setMinimumHeight(80)  # Increased from 50
+        btn.setMinimumWidth(120)  # Increased from 90
         
         # Color coding
         if field.zone == "miss":
@@ -360,7 +360,7 @@ class ScoreConfirmationDialog(QDialog):
         
         btn.setStyleSheet(f"""
             QPushButton {{
-                font-size: 14px;
+                font-size: 18px;
                 font-weight: bold;
                 background-color: {color};
                 color: white;
@@ -371,7 +371,7 @@ class ScoreConfirmationDialog(QDialog):
             }}
         """)
         
-        btn.clicked.connect(lambda: self.select_field(field, btn))
+        btn.clicked.connect(lambda: self.select_field(field))
         
         return btn
     
@@ -390,34 +390,46 @@ class ScoreConfirmationDialog(QDialog):
         else:
             return f"{field.segment}\n{field.score}"
     
-    def select_field(self, field: DartboardField, button: QPushButton):
+    def select_field(self, field: DartboardField):
         """Handle field selection."""
         if len(self.selected_fields) < 3:
             self.selected_fields.append(field)
-            button.setEnabled(False)
             
             # Update display
             total_score = sum(f.score for f in self.selected_fields)
+            
+            # Show selected fields
+            selected_text = " + ".join(
+                self.format_field_short(f) for f in self.selected_fields
+            )
             self.selected_display.setText(
-                f"Selected: {len(self.selected_fields)} / 3 | Total: {total_score} pts"
+                f"Selected: {len(self.selected_fields)} / 3 | {selected_text} = {total_score} pts"
             )
             
             # Enable submit if 3 selected
             if len(self.selected_fields) == 3:
                 self.submit_btn.setEnabled(True)
     
+    def format_field_short(self, field: DartboardField) -> str:
+        """Format field name for short display."""
+        if field.zone == "miss":
+            return "MISS"
+        elif field.zone == "bull_eye":
+            return "BE"
+        elif field.zone == "bull":
+            return "B"
+        elif field.multiplier == 3:
+            return f"T{field.segment}"
+        elif field.multiplier == 2:
+            return f"D{field.segment}"
+        else:
+            return f"{field.segment}"
+    
     def clear_selection(self):
         """Clear all selected fields."""
         self.selected_fields.clear()
         self.selected_display.setText("Selected: 0 / 3")
         self.submit_btn.setEnabled(False)
-        
-        # Re-enable all buttons
-        scroll_widget = self.layout().itemAt(2).widget().widget()
-        for i in range(scroll_widget.layout().count()):
-            widget = scroll_widget.layout().itemAt(i).widget()
-            if isinstance(widget, QPushButton):
-                widget.setEnabled(True)
     
     def submit_correction(self):
         """Submit corrected throws."""
