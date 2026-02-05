@@ -175,6 +175,11 @@ class CalibrationScreen(QWidget):
         # Action buttons
         button_layout = QHBoxLayout()
         
+        back_btn = QPushButton("Back to Menu")
+        back_btn.setMinimumHeight(60)
+        back_btn.clicked.connect(self.go_back)
+        button_layout.addWidget(back_btn)
+        
         reset_btn = QPushButton("Reset to Default")
         reset_btn.setMinimumHeight(60)
         reset_btn.clicked.connect(self.reset_calibration)
@@ -188,6 +193,10 @@ class CalibrationScreen(QWidget):
         
         layout.addLayout(button_layout)
         self.setLayout(layout)
+    
+    def go_back(self) -> None:
+        """Navigate back to start screen."""
+        self.app.show_screen("start")
     
     def enable_center_selection(self) -> None:
         """Enable center point selection mode."""
@@ -320,7 +329,7 @@ class CalibrationScreen(QWidget):
     def save_calibration(self) -> None:
         """Save and emit calibration."""
         # Apply to main app's board mapper
-        self.app.mapper.calibrate(self.calibration)
+        self.app.mapper.set_calibration(self.calibration)
         
         # Save to file
         if self.app.save_calibration():
