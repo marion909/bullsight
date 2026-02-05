@@ -10,7 +10,7 @@ Author: Mario Neuhauser
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QSlider, QGroupBox, QMessageBox, QInputDialog, QDialog,
-    QDialogButtonBox, QFormLayout, QSpinBox, QLineEdit
+    QDialogButtonBox, QFormLayout, QSpinBox, QLineEdit, QScrollArea
 )
 from PySide6.QtCore import Qt, Signal, QPoint, QTimer
 from PySide6.QtGui import QPainter, QPen, QPixmap, QImage, QColor
@@ -128,6 +128,9 @@ class CalibrationScreen(QWidget):
         self.image_height = 480
         self.image_width = 640
         
+        # Track displayed image size for coordinate mapping
+        self.displayed_pixmap: Optional[QPixmap] = None
+        
         # State
         self.selecting_center = False
         
@@ -167,7 +170,9 @@ class CalibrationScreen(QWidget):
     
     def setup_ui(self) -> None:
         """Setup calibration UI layout."""
-        layout = QVBoxLayout()
+        # Create main widget for scroll area
+        scroll_widget = QWidget()
+        layout = QVBoxLayout(scroll_widget)
         
         # Title
         title = QLabel("Dartboard Calibration")
@@ -188,6 +193,7 @@ class CalibrationScreen(QWidget):
         self.image_label = QLabel()
         self.image_label.setMouseTracking(True)
         self.image_label.mousePressEvent = self.on_image_click
+        self.image_label.setMinimumSize(640, 480)
         self.update_image_display()
         layout.addWidget(self.image_label)
         
@@ -308,7 +314,18 @@ class CalibrationScreen(QWidget):
         button_layout.addWidget(save_btn)
         
         layout.addLayout(button_layout)
-        self.setLayout(layout)
+        
+        # Wrap in scroll area
+        scroll_area = QScrollArea()
+        scroll_area.setWidget(scroll_widget)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        
+        # Set scroll area as main layout
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(scroll_area)
+        self.setLayout(main_layout)
     
     def go_back(self) -> None:
         """Navigate back to start screen."""
@@ -509,16 +526,38 @@ class CalibrationScreen(QWidget):
         if not self.selecting_center:
             return
         
-        # Get click position
-        x = event.pos().x()
-        y = event.pos().y()
+        if self.camera_image is None or self.displayed_pixmap is None:
+            return
+        
+        # Get click position on displayed image
+        click_x = event.pos().x()
+        click_y = event.pos().y()
+        
+        # Get displayed image size
+        display_width = self.displayed_pixmap.width()
+        display_height = self.displayed_pixmap.height()
+        
+        # Get original image size
+        original_height, original_width = self.camera_image.shape[:2]
+        
+        # Calculate scale factors
+        scale_x = original_width / display_width
+        scale_y = original_height / display_height
+        
+        # Map click coordinates to original image coordinates
+        original_x = int(click_x * scale_x)
+        original_y = int(click_y * scale_y)
+        
+        # Clamp to image bounds
+        original_x = max(0, min(original_x, original_width - 1))
+        original_y = max(0, min(original_y, original_height - 1))
         
         # Update calibration
-        self.calibration.center_x = x
-        self.calibration.center_y = y
+        self.calibration.center_x = original_x
+        self.calibration.center_y = original_y
         
         # Update UI
-        self.center_label.setText(f"X: {x}, Y: {y}")
+        self.center_label.setText(f"X: {original_x}, Y: {original_y}")
         self.center_btn.setText("Set Center")
         self.center_btn.setStyleSheet("")
         self.selecting_center = False
@@ -595,8 +634,9 @@ class CalibrationScreen(QWidget):
         q_image = QImage(display_image.data, width, height, bytes_per_line, QImage.Format.Format_BGR888)
         pixmap = QPixmap.fromImage(q_image)
         
-        # Scale to fit label
-        scaled_pixmap = pixmap.scaled(800, 600, Qt.AspectRatioMode.KeepAspectRatio)
+        # Scale to fit label (max 800x600)
+        scaled_pixmap = pixmap.scaled(800, 600, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        self.displayed_pixmap = scaled_pixmap
         self.image_label.setPixmap(scaled_pixmap)
     
     def reset_calibration(self) -> None:
