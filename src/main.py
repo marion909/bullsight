@@ -24,6 +24,7 @@ from src.vision.camera_manager import CameraManager
 from src.vision.dart_detector import DartDetector
 from src.calibration.board_mapper import BoardMapper, CalibrationData
 from src.game.game_engine import GameEngine
+from src.config.settings_manager import SettingsManager
 
 
 # Configure logging
@@ -71,6 +72,7 @@ class BullSightApp(QApplication):
         self.detector = DartDetector()
         self.mapper = BoardMapper()
         self.game: Optional[GameEngine] = None
+        self.settings = SettingsManager()
         
         # Create main window stack
         self.stack = QStackedWidget()

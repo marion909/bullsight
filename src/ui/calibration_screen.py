@@ -556,6 +556,10 @@ class CalibrationScreen(QWidget):
         self.calibration.center_x = original_x
         self.calibration.center_y = original_y
         
+        # Auto-save calibration
+        self.app.mapper.calibrate(self.calibration)
+        self.app.save_calibration()
+        
         # Update UI
         self.center_label.setText(f"X: {original_x}, Y: {original_y}")
         self.center_btn.setText("Set Center")
@@ -570,36 +574,54 @@ class CalibrationScreen(QWidget):
         self.calibration.bull_eye_radius = float(value)
         self.bull_eye_label.setText(f"{value} px")
         self.update_image_display()
+        # Auto-save calibration
+        self.app.mapper.calibrate(self.calibration)
+        self.app.save_calibration()
     
     def on_bull_changed(self, value: int) -> None:
         """Handle bull radius slider change."""
         self.calibration.bull_radius = float(value)
         self.bull_label.setText(f"{value} px")
         self.update_image_display()
+        # Auto-save calibration
+        self.app.mapper.calibrate(self.calibration)
+        self.app.save_calibration()
     
     def on_triple_inner_changed(self, value: int) -> None:
         """Handle triple inner radius slider change."""
         self.calibration.triple_inner_radius = float(value)
         self.triple_inner_label.setText(f"{value} px")
         self.update_image_display()
+        # Auto-save calibration
+        self.app.mapper.calibrate(self.calibration)
+        self.app.save_calibration()
     
     def on_triple_outer_changed(self, value: int) -> None:
         """Handle triple outer radius slider change."""
         self.calibration.triple_outer_radius = float(value)
         self.triple_outer_label.setText(f"{value} px")
         self.update_image_display()
+        # Auto-save calibration
+        self.app.mapper.calibrate(self.calibration)
+        self.app.save_calibration()
     
     def on_double_inner_changed(self, value: int) -> None:
         """Handle double inner radius slider change."""
         self.calibration.double_inner_radius = float(value)
         self.double_inner_label.setText(f"{value} px")
         self.update_image_display()
+        # Auto-save calibration
+        self.app.mapper.calibrate(self.calibration)
+        self.app.save_calibration()
     
     def on_double_outer_changed(self, value: int) -> None:
         """Handle double outer radius slider change."""
         self.calibration.double_outer_radius = float(value)
         self.double_outer_label.setText(f"{value} px")
         self.update_image_display()
+        # Auto-save calibration
+        self.app.mapper.calibrate(self.calibration)
+        self.app.save_calibration()
     
     def update_image_display(self) -> None:
         """Update image with calibration overlay."""

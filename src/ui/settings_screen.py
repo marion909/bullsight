@@ -44,8 +44,9 @@ class SettingsScreen(QWidget):
         """
         super().__init__()
         self.app = app
-        self.sound_volume = 70
-        self.sound_enabled = True
+        # Load settings from app
+        self.sound_volume = app.settings.get("sound_volume", 70)
+        self.sound_enabled = app.settings.get("sound_enabled", True)
         self.setup_ui()
     
     def setup_ui(self) -> None:
@@ -70,7 +71,7 @@ class SettingsScreen(QWidget):
         
         # Sound toggle
         self.sound_checkbox = QCheckBox("Enable Sound Effects")
-        self.sound_checkbox.setChecked(True)
+        self.sound_checkbox.setChecked(self.sound_enabled)
         self.sound_checkbox.setStyleSheet("font-size: 18px;")
         self.sound_checkbox.stateChanged.connect(self.toggle_sound)
         layout.addWidget(self.sound_checkbox)
@@ -84,11 +85,11 @@ class SettingsScreen(QWidget):
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setMinimum(0)
         self.volume_slider.setMaximum(100)
-        self.volume_slider.setValue(70)
+        self.volume_slider.setValue(self.sound_volume)
         self.volume_slider.valueChanged.connect(self.change_volume)
         volume_layout.addWidget(self.volume_slider)
         
-        self.volume_value_label = QLabel("70%")
+        self.volume_value_label = QLabel(f"{self.sound_volume}%")
         self.volume_value_label.setStyleSheet("font-size: 18px; min-width: 60px;")
         volume_layout.addWidget(self.volume_value_label)
         
@@ -146,6 +147,9 @@ class SettingsScreen(QWidget):
         self.sound_enabled = (state == Qt.CheckState.Checked.value)
         self.volume_slider.setEnabled(self.sound_enabled)
         
+        # Save setting
+        self.app.settings.set("sound_enabled", self.sound_enabled)
+        
         # Apply to pygame mixer if initialized
         try:
             import pygame
@@ -165,6 +169,9 @@ class SettingsScreen(QWidget):
         """
         self.sound_volume = value
         self.volume_value_label.setText(f"{value}%")
+        
+        # Save setting
+        self.app.settings.set("sound_volume", value)
         
         # Apply to pygame mixer if initialized
         try:
