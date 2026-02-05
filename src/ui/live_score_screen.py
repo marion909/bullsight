@@ -404,11 +404,21 @@ class LiveScoreScreen(QWidget):
     
     def manual_next_player(self) -> None:
         """Manually advance to next player (backup)."""
+        # Stop detection during manual advancement
+        self.detection_timer.stop()
+        
         # Complete current round with misses if needed
         while len(self.app.game.current_round.darts) < 3:
-            field = DartboardField(0, "miss", 0, 0)
+            field = DartboardField(segment=0, zone="miss", multiplier=0, score=0)
             self.app.game.record_dart(field)
         
+        # Check for checkout or bust
+        if self.app.game.current_round.is_checkout:
+            self.handle_game_over()
+            return
+        
+        # Move to next player without confirmation dialog (manual override)
+        self.current_round_throws.clear()
         self.prepare_next_player()
     
     def pause_game(self) -> None:
