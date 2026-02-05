@@ -134,6 +134,8 @@ class DartDetector:
         if self.reference_image is None:
             raise RuntimeError("No reference image to save")
         
+        from pathlib import Path
+        filepath = Path(filepath) if isinstance(filepath, str) else filepath
         filepath.parent.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(filepath), self.reference_image)
         logger.info(f"Reference image saved to: {filepath}")

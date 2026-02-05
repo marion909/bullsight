@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QLabel, QSlider, QGroupBox, QMessageBox, QInputDialog, QDialog,
     QDialogButtonBox, QFormLayout, QSpinBox, QLineEdit
 )
-from PySide6.QtCore import Qt, Signal, QPoint
+from PySide6.QtCore import Qt, Signal, QPoint, QTimer
 from PySide6.QtGui import QPainter, QPen, QPixmap, QImage, QColor
 import cv2
 import numpy as np
@@ -139,7 +139,31 @@ class CalibrationScreen(QWidget):
             board_radius_pixels=estimated_radius
         )
         
+        # Setup live camera updates
+        self.camera_timer = QTimer()
+        self.camera_timer.timeout.connect(self.update_camera_feed)
+        
         self.setup_ui()
+    
+    def showEvent(self, event):
+        """Start camera when screen is shown."""
+        super().showEvent(event)
+        if self.app.start_camera():
+            self.camera_timer.start(100)  # Update every 100ms
+    
+    def hideEvent(self, event):
+        """Stop camera updates when screen is hidden."""
+        super().hideEvent(event)
+        self.camera_timer.stop()
+    
+    def update_camera_feed(self):
+        """Update camera feed continuously."""
+        try:
+            if self.app.camera and self.app.camera.is_started:
+                self.camera_image = self.app.camera.capture()
+                self.update_image_display()
+        except Exception as e:
+            pass  # Silently ignore camera errors during live feed
     
     def setup_ui(self) -> None:
         """Setup calibration UI layout."""
@@ -363,13 +387,13 @@ class CalibrationScreen(QWidget):
         config_dir.mkdir(exist_ok=True)
         reference_path = config_dir / "reference_board.jpg"
         
-        # Save image
-        cv2.imwrite(str(reference_path), reference_frame)
-        
-        # Update dart detector with new reference
+        # Save image and update dart detector
         if hasattr(self.app, 'detector'):
             self.app.detector.set_reference_image(reference_frame)
             self.app.detector.save_reference_to_file(str(reference_path))
+        else:
+            # Fallback if detector not initialized
+            cv2.imwrite(str(reference_path), reference_frame)
         
         # Show success message
         QMessageBox.information(
@@ -540,11 +564,6 @@ class CalibrationScreen(QWidget):
     
     def update_image_display(self) -> None:
         """Update image with calibration overlay."""
-        if self.camera_image is None:
-            # Try to capture from camera
-            if self.app.start_camera():
-                self.camera_image = self.app.camera.capture()
-        
         if self.camera_image is None:
             # Show placeholder
             self.image_label.setText("No camera image available\nPlease connect camera")
