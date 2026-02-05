@@ -7,12 +7,12 @@ with visual feedback on camera image.
 Author: Mario Neuhauser
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QSlider, QGroupBox, QMessageBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint
-from PyQt6.QtGui import QPainter, QPen, QPixmap, QImage, QColor
+from PySide6.QtCore import Qt, Signal, QPoint
+from PySide6.QtGui import QPainter, QPen, QPixmap, QImage, QColor
 import cv2
 import numpy as np
 from typing import Optional, TYPE_CHECKING
@@ -34,7 +34,7 @@ class CalibrationScreen(QWidget):
         calibration_complete: Emitted when calibration is finalized
     """
     
-    calibration_complete = pyqtSignal(CalibrationData)
+    calibration_complete = Signal(CalibrationData)
     
     def __init__(self, app: 'BullSightApp'):
         """

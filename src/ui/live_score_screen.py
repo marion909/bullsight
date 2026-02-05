@@ -8,12 +8,12 @@ Author: Mario Neuhauser
 """
 
 import logging
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QMessageBox
 )
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont
 from typing import TYPE_CHECKING
 
 from src.game.game_engine import GameState

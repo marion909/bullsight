@@ -6,12 +6,12 @@ Allows adding and removing players (1-8) before starting a game.
 Author: Mario Neuhauser
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QLineEdit, QListWidget, QMessageBox
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from typing import TYPE_CHECKING, List
 
 from src.game.game_engine import Player

@@ -6,11 +6,11 @@ Main menu with options for new game, calibration, and settings.
 Author: Mario Neuhauser
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

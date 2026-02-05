@@ -6,12 +6,12 @@ Allows selecting game mode and configuration before starting.
 Author: Mario Neuhauser
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QCheckBox, QGridLayout
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from typing import TYPE_CHECKING
 
 from src.game.game_engine import GameMode, GameEngine

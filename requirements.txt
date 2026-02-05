@@ -4,8 +4,7 @@ numpy==1.26.4
 picamera2==0.3.17
 
 # UI Framework
-PyQt6==6.6.1
-PyQt6-Qt6==6.6.1
+PySide6>=6.8.0
 
 # Testing
 pytest==8.0.0

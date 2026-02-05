@@ -6,9 +6,9 @@ Coverage Target: 100%
 """
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QPushButton, QMainWindow
-from PyQt6.QtCore import Qt, QPoint
-from PyQt6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QPushButton, QMainWindow
+from PySide6.QtCore import Qt, QPoint
+from PySide6.QtTest import QTest
 import sys
 
 

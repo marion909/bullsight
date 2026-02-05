@@ -6,12 +6,12 @@ Allows configuration of sound, display, and system settings.
 Author: Mario Neuhauser
 """
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QSlider, QCheckBox
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from typing import TYPE_CHECKING
 import sys
 
@@ -106,7 +106,7 @@ class SettingsScreen(QWidget):
         <b>Application:</b> BullSight v{self.app.applicationVersion()}<br>
         <b>Python:</b> {sys.version.split()[0]}<br>
         <b>Platform:</b> {sys.platform}<br>
-        <b>Calibration:</b> {'Loaded' if self.app.mapper.calibration_data else 'Not configured'}
+        <b>Calibration:</b> {'Loaded' if self.app.mapper.calibration else 'Not configured'}
         </p>
         """
         

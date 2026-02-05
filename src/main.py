@@ -11,8 +11,8 @@ import sys
 import logging
 from pathlib import Path
 from typing import Optional
-from PyQt6.QtWidgets import QApplication, QStackedWidget
-from PyQt6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QStackedWidget
+from PySide6.QtCore import Qt
 
 from src.ui.start_screen import StartScreen
 from src.ui.player_management_screen import PlayerManagementScreen
