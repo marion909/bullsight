@@ -137,19 +137,8 @@ class CalibrationScreen(QWidget):
         # State
         self.selecting_center = False
         
-        # Use existing calibration from mapper, or create default
-        if self.app.mapper.calibration:
-            self.calibration = self.app.mapper.calibration
-            logger.info(f"Loaded existing calibration: center=({self.calibration.center_x}, {self.calibration.center_y})")
-        else:
-            # Initialize with default calibration
-            estimated_radius = min(self.image_width, self.image_height) * 0.4
-            self.calibration = create_default_calibration(
-                self.image_width,
-                self.image_height,
-                board_radius_pixels=estimated_radius
-            )
-            logger.info("Created default calibration")
+        # Will be set in showEvent() to use loaded calibration
+        self.calibration = None
         
         # Setup live camera updates
         self.camera_timer = QTimer()
@@ -158,8 +147,27 @@ class CalibrationScreen(QWidget):
         self.setup_ui()
     
     def showEvent(self, event):
-        """Start camera when screen is shown."""
+        """Start camera and load calibration when screen is shown."""
         super().showEvent(event)
+        
+        # Load calibration from mapper (after app has loaded config)
+        if self.calibration is None:
+            if self.app.mapper.calibration:
+                self.calibration = self.app.mapper.calibration
+                logger.info(f"Using loaded calibration: center=({self.calibration.center_x}, {self.calibration.center_y})")
+            else:
+                # Initialize with default calibration
+                estimated_radius = min(self.image_width, self.image_height) * 0.4
+                self.calibration = create_default_calibration(
+                    self.image_width,
+                    self.image_height,
+                    board_radius_pixels=estimated_radius
+                )
+                logger.info("Created default calibration")
+            
+            # Update UI with loaded values
+            self.update_ui_from_calibration()
+        
         if self.app.start_camera():
             self.camera_timer.start(100)  # Update every 100ms
     
@@ -210,9 +218,7 @@ class CalibrationScreen(QWidget):
         center_group = QGroupBox("Board Center")
         center_layout = QVBoxLayout()
         
-        self.center_label = QLabel(
-            f"X: {self.calibration.center_x}, Y: {self.calibration.center_y}"
-        )
+        self.center_label = QLabel("X: 0, Y: 0")
         center_layout.addWidget(self.center_label)
         
         self.center_btn = QPushButton("Set Center")
@@ -244,60 +250,60 @@ class CalibrationScreen(QWidget):
         radii_layout.addWidget(QLabel("Bull's Eye Radius"))
         self.bull_eye_slider = QSlider(Qt.Orientation.Horizontal)
         self.bull_eye_slider.setRange(5, 50)
-        self.bull_eye_slider.setValue(int(self.calibration.bull_eye_radius))
+        self.bull_eye_slider.setValue(20)
         self.bull_eye_slider.valueChanged.connect(self.on_bull_eye_changed)
         radii_layout.addWidget(self.bull_eye_slider)
-        self.bull_eye_label = QLabel(f"{int(self.calibration.bull_eye_radius)} px")
+        self.bull_eye_label = QLabel("20 px")
         radii_layout.addWidget(self.bull_eye_label)
         
         # Bull
         radii_layout.addWidget(QLabel("Bull Radius"))
         self.bull_slider = QSlider(Qt.Orientation.Horizontal)
         self.bull_slider.setRange(10, 100)
-        self.bull_slider.setValue(int(self.calibration.bull_radius))
+        self.bull_slider.setValue(40)
         self.bull_slider.valueChanged.connect(self.on_bull_changed)
         radii_layout.addWidget(self.bull_slider)
-        self.bull_label = QLabel(f"{int(self.calibration.bull_radius)} px")
+        self.bull_label = QLabel("40 px")
         radii_layout.addWidget(self.bull_label)
         
         # Triple inner
         radii_layout.addWidget(QLabel("Triple Inner Radius"))
         self.triple_inner_slider = QSlider(Qt.Orientation.Horizontal)
         self.triple_inner_slider.setRange(50, 400)
-        self.triple_inner_slider.setValue(int(self.calibration.triple_inner_radius))
+        self.triple_inner_slider.setValue(100)
         self.triple_inner_slider.valueChanged.connect(self.on_triple_inner_changed)
         radii_layout.addWidget(self.triple_inner_slider)
-        self.triple_inner_label = QLabel(f"{int(self.calibration.triple_inner_radius)} px")
+        self.triple_inner_label = QLabel("100 px")
         radii_layout.addWidget(self.triple_inner_label)
         
         # Triple outer
         radii_layout.addWidget(QLabel("Triple Outer Radius"))
         self.triple_outer_slider = QSlider(Qt.Orientation.Horizontal)
         self.triple_outer_slider.setRange(60, 420)
-        self.triple_outer_slider.setValue(int(self.calibration.triple_outer_radius))
+        self.triple_outer_slider.setValue(120)
         self.triple_outer_slider.valueChanged.connect(self.on_triple_outer_changed)
         radii_layout.addWidget(self.triple_outer_slider)
-        self.triple_outer_label = QLabel(f"{int(self.calibration.triple_outer_radius)} px")
+        self.triple_outer_label = QLabel("120 px")
         radii_layout.addWidget(self.triple_outer_label)
         
         # Double inner
         radii_layout.addWidget(QLabel("Double Inner Radius"))
         self.double_inner_slider = QSlider(Qt.Orientation.Horizontal)
         self.double_inner_slider.setRange(200, 600)
-        self.double_inner_slider.setValue(int(self.calibration.double_inner_radius))
+        self.double_inner_slider.setValue(160)
         self.double_inner_slider.valueChanged.connect(self.on_double_inner_changed)
         radii_layout.addWidget(self.double_inner_slider)
-        self.double_inner_label = QLabel(f"{int(self.calibration.double_inner_radius)} px")
+        self.double_inner_label = QLabel("160 px")
         radii_layout.addWidget(self.double_inner_label)
         
         # Double outer
         radii_layout.addWidget(QLabel("Double Outer Radius"))
         self.double_outer_slider = QSlider(Qt.Orientation.Horizontal)
         self.double_outer_slider.setRange(210, 650)
-        self.double_outer_slider.setValue(int(self.calibration.double_outer_radius))
+        self.double_outer_slider.setValue(180)
         self.double_outer_slider.valueChanged.connect(self.on_double_outer_changed)
         radii_layout.addWidget(self.double_outer_slider)
-        self.double_outer_label = QLabel(f"{int(self.calibration.double_outer_radius)} px")
+        self.double_outer_label = QLabel("180 px")
         radii_layout.addWidget(self.double_outer_label)
         
         radii_group.setLayout(radii_layout)
@@ -339,6 +345,52 @@ class CalibrationScreen(QWidget):
     def go_back(self) -> None:
         """Navigate back to start screen."""
         self.app.show_screen("start")
+    
+    def update_ui_from_calibration(self) -> None:
+        """Update UI controls with values from loaded calibration."""
+        if self.calibration is None:
+            return
+        
+        # Block signals to prevent auto-save while loading
+        self.bull_eye_slider.blockSignals(True)
+        self.bull_slider.blockSignals(True)
+        self.triple_inner_slider.blockSignals(True)
+        self.triple_outer_slider.blockSignals(True)
+        self.double_inner_slider.blockSignals(True)
+        self.double_outer_slider.blockSignals(True)
+        
+        # Update center label
+        self.center_label.setText(f"X: {int(self.calibration.center_x)}, Y: {int(self.calibration.center_y)}")
+        
+        # Update sliders
+        self.bull_eye_slider.setValue(int(self.calibration.bull_eye_radius))
+        self.bull_eye_label.setText(f"{int(self.calibration.bull_eye_radius)} px")
+        
+        self.bull_slider.setValue(int(self.calibration.bull_radius))
+        self.bull_label.setText(f"{int(self.calibration.bull_radius)} px")
+        
+        self.triple_inner_slider.setValue(int(self.calibration.triple_inner_radius))
+        self.triple_inner_label.setText(f"{int(self.calibration.triple_inner_radius)} px")
+        
+        self.triple_outer_slider.setValue(int(self.calibration.triple_outer_radius))
+        self.triple_outer_label.setText(f"{int(self.calibration.triple_outer_radius)} px")
+        
+        self.double_inner_slider.setValue(int(self.calibration.double_inner_radius))
+        self.double_inner_label.setText(f"{int(self.calibration.double_inner_radius)} px")
+        
+        self.double_outer_slider.setValue(int(self.calibration.double_outer_radius))
+        self.double_outer_label.setText(f"{int(self.calibration.double_outer_radius)} px")
+        
+        # Unblock signals
+        self.bull_eye_slider.blockSignals(False)
+        self.bull_slider.blockSignals(False)
+        self.triple_inner_slider.blockSignals(False)
+        self.triple_outer_slider.blockSignals(False)
+        self.double_inner_slider.blockSignals(False)
+        self.double_outer_slider.blockSignals(False)
+        
+        # Update display
+        self.update_image_display()
     
     def enable_center_selection(self) -> None:
         """Enable center point selection mode."""
@@ -580,6 +632,8 @@ class CalibrationScreen(QWidget):
     
     def on_bull_eye_changed(self, value: int) -> None:
         """Handle bull's eye radius slider change."""
+        if self.calibration is None:
+            return
         self.calibration.bull_eye_radius = float(value)
         self.bull_eye_label.setText(f"{value} px")
         self.update_image_display()
@@ -589,6 +643,8 @@ class CalibrationScreen(QWidget):
     
     def on_bull_changed(self, value: int) -> None:
         """Handle bull radius slider change."""
+        if self.calibration is None:
+            return
         self.calibration.bull_radius = float(value)
         self.bull_label.setText(f"{value} px")
         self.update_image_display()
@@ -598,6 +654,8 @@ class CalibrationScreen(QWidget):
     
     def on_triple_inner_changed(self, value: int) -> None:
         """Handle triple inner radius slider change."""
+        if self.calibration is None:
+            return
         self.calibration.triple_inner_radius = float(value)
         self.triple_inner_label.setText(f"{value} px")
         self.update_image_display()
@@ -607,6 +665,8 @@ class CalibrationScreen(QWidget):
     
     def on_triple_outer_changed(self, value: int) -> None:
         """Handle triple outer radius slider change."""
+        if self.calibration is None:
+            return
         self.calibration.triple_outer_radius = float(value)
         self.triple_outer_label.setText(f"{value} px")
         self.update_image_display()
@@ -616,6 +676,8 @@ class CalibrationScreen(QWidget):
     
     def on_double_inner_changed(self, value: int) -> None:
         """Handle double inner radius slider change."""
+        if self.calibration is None:
+            return
         self.calibration.double_inner_radius = float(value)
         self.double_inner_label.setText(f"{value} px")
         self.update_image_display()
@@ -625,6 +687,8 @@ class CalibrationScreen(QWidget):
     
     def on_double_outer_changed(self, value: int) -> None:
         """Handle double outer radius slider change."""
+        if self.calibration is None:
+            return
         self.calibration.double_outer_radius = float(value)
         self.double_outer_label.setText(f"{value} px")
         self.update_image_display()
@@ -634,7 +698,7 @@ class CalibrationScreen(QWidget):
     
     def update_image_display(self) -> None:
         """Update image with calibration overlay."""
-        if self.camera_image is None:
+        if self.camera_image is None or self.calibration is None:
             # Show placeholder
             self.image_label.setText("No camera image available\nPlease connect camera")
             return
