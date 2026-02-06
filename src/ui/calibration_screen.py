@@ -17,10 +17,13 @@ from PySide6.QtGui import QPainter, QPen, QPixmap, QImage, QColor
 import cv2
 import numpy as np
 import json
+import logging
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 from src.calibration.board_mapper import CalibrationData, create_default_calibration
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.main import BullSightApp
@@ -134,13 +137,19 @@ class CalibrationScreen(QWidget):
         # State
         self.selecting_center = False
         
-        # Initialize with default calibration
-        estimated_radius = min(self.image_width, self.image_height) * 0.4
-        self.calibration = create_default_calibration(
-            self.image_width,
-            self.image_height,
-            board_radius_pixels=estimated_radius
-        )
+        # Use existing calibration from mapper, or create default
+        if self.app.mapper.calibration:
+            self.calibration = self.app.mapper.calibration
+            logger.info(f"Loaded existing calibration: center=({self.calibration.center_x}, {self.calibration.center_y})")
+        else:
+            # Initialize with default calibration
+            estimated_radius = min(self.image_width, self.image_height) * 0.4
+            self.calibration = create_default_calibration(
+                self.image_width,
+                self.image_height,
+                board_radius_pixels=estimated_radius
+            )
+            logger.info("Created default calibration")
         
         # Setup live camera updates
         self.camera_timer = QTimer()
