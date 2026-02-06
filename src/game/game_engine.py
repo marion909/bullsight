@@ -282,6 +282,20 @@ class GameEngine:
         elif field.zone == "double":
             stats["doubles_hit"] += 1
     
+    def is_master_field(self, field: DartboardField) -> bool:
+        """
+        Check if field is a master (Bull or Double).
+        
+        Args:
+            field: Field to check
+            
+        Returns:
+            True if field is Bull's Eye, Bull, or any Double
+        """
+        return (field.zone == "bull_eye" or 
+                field.zone == "bull" or 
+                field.zone == "double")
+    
     def complete_round(self) -> None:
         """
         Complete current round and process scoring.
@@ -292,6 +306,36 @@ class GameEngine:
             return
         
         player = self.get_current_player()
+        
+        # Check if game has started for this player (for In-rules)
+        player_started = player.score > 0 or len([r for r in self.rounds if r.player_id == player.id]) > 0
+        
+        # Check Double In / Master In requirements for first scoring round
+        if self.mode in [GameMode.GAME_301, GameMode.GAME_501, GameMode.GAME_701]:
+            if not player_started and len(self.current_round.darts) > 0:
+                double_in = self.config.get("double_in", False)
+                master_in = self.config.get("master_in", False)
+                
+                if double_in or master_in:
+                    # Check first scoring dart
+                    valid_start = False
+                    for dart in self.current_round.darts:
+                        if dart.field.score > 0:  # Found first scoring dart
+                            if master_in:
+                                valid_start = self.is_master_field(dart.field)
+                            elif double_in:
+                                valid_start = dart.field.multiplier == 2
+                            break
+                    
+                    if not valid_start:
+                        # Invalid start - no score this round
+                        self.current_round.is_bust = True
+                        logger.info(f"{player.name} must start with {'Master' if master_in else 'Double'}!")
+                        # Store round but don't score
+                        self.rounds.append(self.current_round)
+                        self.state = GameState.ROUND_COMPLETE
+                        self.next_player()
+                        return
         
         # Calculate round score
         round_score = sum(dart.field.score for dart in self.current_round.darts)
@@ -339,7 +383,7 @@ class GameEngine:
         """
         Process round for countdown games (301/501/701).
         
-        Handles bust logic, double-out, and checkout rules.
+        Handles bust logic, double-out, master-out, and checkout rules.
         
         Args:
             player: Player who completed round
@@ -347,6 +391,7 @@ class GameEngine:
         """
         config = self.config
         double_out = config.get("double_out", True)
+        master_out = config.get("master_out", False)
         
         new_score = player.score - round_score
         
@@ -357,14 +402,22 @@ class GameEngine:
             logger.info(f"{player.name} bust! Score remains {player.score}")
             return
         
-        # Check double-out requirement
+        # Check double-out or master-out requirement
         if new_score == 0:
             last_dart = self.current_round.darts[-1]
-            if double_out and last_dart.field.multiplier != 2:
+            
+            if master_out:
+                # Must finish on Bull or Double
+                if not self.is_master_field(last_dart.field):
+                    self.current_round.is_bust = True
+                    logger.info(f"{player.name} must finish on Master (Bull or Double)! Score remains {player.score}")
+                    return
+            elif double_out:
                 # Must finish on double
-                self.current_round.is_bust = True
-                logger.info(f"{player.name} must finish on double! Score remains {player.score}")
-                return
+                if last_dart.field.multiplier != 2:
+                    self.current_round.is_bust = True
+                    logger.info(f"{player.name} must finish on double! Score remains {player.score}")
+                    return
             
             # Valid checkout
             self.current_round.is_checkout = True

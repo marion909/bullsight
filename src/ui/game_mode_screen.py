@@ -45,7 +45,10 @@ class GameModeScreen(QWidget):
         super().__init__()
         self.app = app
         self.selected_mode = GameMode.GAME_301
-        self.double_out = True
+        self.double_out = False
+        self.double_in = False
+        self.master_in = False
+        self.master_out = False
         self.setup_ui()
     
     def setup_ui(self) -> None:
@@ -116,11 +119,39 @@ class GameModeScreen(QWidget):
         options_label.setStyleSheet("font-size: 22px; font-weight: bold;")
         options_layout.addWidget(options_label)
         
-        self.double_out_checkbox = QCheckBox("Double-Out Required")
+        # In-Options (mutually exclusive)
+        in_label = QLabel("Game Start:")
+        in_label.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 10px;")
+        options_layout.addWidget(in_label)
+        
+        self.double_in_checkbox = QCheckBox("Double In")
+        self.double_in_checkbox.setChecked(False)
+        self.double_in_checkbox.setStyleSheet("font-size: 18px; margin-left: 20px;")
+        self.double_in_checkbox.stateChanged.connect(self.toggle_double_in)
+        options_layout.addWidget(self.double_in_checkbox)
+        
+        self.master_in_checkbox = QCheckBox("Master In (Bull or Double)")
+        self.master_in_checkbox.setChecked(False)
+        self.master_in_checkbox.setStyleSheet("font-size: 18px; margin-left: 20px;")
+        self.master_in_checkbox.stateChanged.connect(self.toggle_master_in)
+        options_layout.addWidget(self.master_in_checkbox)
+        
+        # Out-Options
+        out_label = QLabel("Game Finish:")
+        out_label.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 10px;")
+        options_layout.addWidget(out_label)
+        
+        self.double_out_checkbox = QCheckBox("Double Out")
         self.double_out_checkbox.setChecked(True)
-        self.double_out_checkbox.setStyleSheet("font-size: 18px;")
+        self.double_out_checkbox.setStyleSheet("font-size: 18px; margin-left: 20px;")
         self.double_out_checkbox.stateChanged.connect(self.toggle_double_out)
         options_layout.addWidget(self.double_out_checkbox)
+        
+        self.master_out_checkbox = QCheckBox("Master Out (Bull or Double)")
+        self.master_out_checkbox.setChecked(False)
+        self.master_out_checkbox.setStyleSheet("font-size: 18px; margin-left: 20px;")
+        self.master_out_checkbox.stateChanged.connect(self.toggle_master_out)
+        options_layout.addWidget(self.master_out_checkbox)
         
         layout.addLayout(options_layout)
         
@@ -185,6 +216,49 @@ class GameModeScreen(QWidget):
         """
         self.double_out = (state == Qt.CheckState.Checked.value)
     
+    def toggle_double_in(self, state: int) -> None:
+        """
+        Toggle double-in requirement.
+        Mutually exclusive with master-in.
+        
+        Args:
+            state: Checkbox state
+        """
+        if state == Qt.CheckState.Checked.value:
+            self.double_in = True
+            self.master_in = False
+            self.master_in_checkbox.blockSignals(True)
+            self.master_in_checkbox.setChecked(False)
+            self.master_in_checkbox.blockSignals(False)
+        else:
+            self.double_in = False
+    
+    def toggle_master_in(self, state: int) -> None:
+        """
+        Toggle master-in requirement.
+        Mutually exclusive with double-in.
+        
+        Args:
+            state: Checkbox state
+        """
+        if state == Qt.CheckState.Checked.value:
+            self.master_in = True
+            self.double_in = False
+            self.double_in_checkbox.blockSignals(True)
+            self.double_in_checkbox.setChecked(False)
+            self.double_in_checkbox.blockSignals(False)
+        else:
+            self.master_in = False
+    
+    def toggle_master_out(self, state: int) -> None:
+        """
+        Toggle master-out requirement.
+        
+        Args:
+            state: Checkbox state
+        """
+        self.master_out = (state == Qt.CheckState.Checked.value)
+    
     def start_game(self) -> None:
         """Start game with selected settings."""
         # Get players from player management screen
@@ -201,7 +275,12 @@ class GameModeScreen(QWidget):
             return
         
         # Create game engine
-        config = {"double_out": self.double_out}
+        config = {
+            "double_out": self.double_out,
+            "double_in": self.double_in,
+            "master_in": self.master_in,
+            "master_out": self.master_out
+        }
         self.app.game = GameEngine(self.selected_mode, players, config)
         self.app.game.start_game()
         
