@@ -152,17 +152,8 @@ class BullSightApp(QApplication):
                 with open(calibration_path, 'r') as f:
                     data = json.load(f)
                 
-                calibration = CalibrationData(
-                    center_x=data['center_x'],
-                    center_y=data['center_y'],
-                    inner_bull_radius=data['inner_bull_radius'],
-                    outer_bull_radius=data['outer_bull_radius'],
-                    inner_single_radius=data['inner_single_radius'],
-                    triple_radius=data['triple_radius'],
-                    outer_single_radius=data['outer_single_radius'],
-                    double_radius=data['double_radius']
-                )
-                self.mapper.calibrate(calibration)
+                calibration = CalibrationData.from_dict(data)
+                self.mapper.set_calibration(calibration)
                 logger.info("Calibration loaded")
                 return True
             except Exception as e:
@@ -181,21 +172,12 @@ class BullSightApp(QApplication):
             # Ensure config directory exists
             calibration_path.parent.mkdir(parents=True, exist_ok=True)
             
-            if self.mapper.calibration_data is None:
+            if self.mapper.calibration is None:
                 logger.error("No calibration data to save")
                 return False
             
             import json
-            data = {
-                'center_x': self.mapper.calibration_data.center_x,
-                'center_y': self.mapper.calibration_data.center_y,
-                'inner_bull_radius': self.mapper.calibration_data.inner_bull_radius,
-                'outer_bull_radius': self.mapper.calibration_data.outer_bull_radius,
-                'inner_single_radius': self.mapper.calibration_data.inner_single_radius,
-                'triple_radius': self.mapper.calibration_data.triple_radius,
-                'outer_single_radius': self.mapper.calibration_data.outer_single_radius,
-                'double_radius': self.mapper.calibration_data.double_radius
-            }
+            data = self.mapper.calibration.to_dict()
             
             with open(calibration_path, 'w') as f:
                 json.dump(data, f, indent=2)
