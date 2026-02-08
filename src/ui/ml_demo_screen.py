@@ -432,14 +432,29 @@ class MLDemoScreen(QWidget):
                 self.display_image(vis_right, self.image_label_right)
                 
             else:
-                # Fallback to single-camera detection
+                # Fallback to single-camera detection (no stereo calibration available)
+                # Detect on left camera
                 if show_all:
-                    detections = ml_detector.detect_multiple(image, max_darts=10)
+                    detections_left = ml_detector.detect_multiple(image, max_darts=10)
                 else:
-                    detections = ml_detector.detect_multiple(image, max_darts=1)
+                    detections_left = ml_detector.detect_multiple(image, max_darts=1)
                 
-                # Visualize
-                vis_image = self.visualize_detections(image.copy(), detections)
+                # Visualize left
+                vis_image = self.visualize_detections(image.copy(), detections_left)
+                
+                # If right camera available, detect on it too
+                if self.current_mode == "live" and image_right is not None:
+                    if show_all:
+                        detections_right = ml_detector.detect_multiple(image_right, max_darts=10)
+                    else:
+                        detections_right = ml_detector.detect_multiple(image_right, max_darts=1)
+                    vis_right = self.visualize_detections(image_right.copy(), detections_right)
+                else:
+                    detections_right = []
+                    vis_right = None
+                
+                # Use left detections for info display
+                detections = detections_left
                 
                 # Update detection info with detailed dartboard mapping
                 if detections:
@@ -470,47 +485,54 @@ class MLDemoScreen(QWidget):
                                     elif field.zone == "bull":
                                         field_str = "🎪 Outer Bull (25 points)"
                                         points = 25
-                                elif field.zone == "miss":
-                                    field_str = "❌ Miss (0 points)"
-                                    points = 0
-                                elif field.zone == "triple":
-                                    field_str = f"🔺 Triple {field.segment} ({field.score} points)"
-                                    points = field.score
-                                elif field.zone == "double":
-                                    field_str = f"🔷 Double {field.segment} ({field.score} points)"
-                                    points = field.score
-                                else:  # single
-                                    field_str = f"🔹 Single {field.segment} ({field.score} points)"
-                                    points = field.score
-                                
-                                info_text += f"  Field: {field_str}\n"
-                                total_score += points
-                        except Exception as e:
-                            logger.debug(f"Could not map coordinate: {e}")
+                                    elif field.zone == "miss":
+                                        field_str = "❌ Miss (0 points)"
+                                        points = 0
+                                    elif field.zone == "triple":
+                                        field_str = f"🔺 Triple {field.segment} ({field.score} points)"
+                                        points = field.score
+                                    elif field.zone == "double":
+                                        field_str = f"🔷 Double {field.segment} ({field.score} points)"
+                                        points = field.score
+                                    else:  # single
+                                        field_str = f"🔹 Single {field.segment} ({field.score} points)"
+                                        points = field.score
+                                    
+                                    info_text += f"  Field: {field_str}\n"
+                                    total_score += points
+                            except Exception as e:
+                                logger.debug(f"Could not map coordinate: {e}")
                     
                     info_text += "\n"
                 
-                # Show total score if calibration exists
-                if has_calibration:
-                    info_text += f"━━━━━━━━━━━━━━━\n"
-                    info_text += f"📊 Total Score: {total_score} points\n"
-                else:
-                    info_text += "\n⚠️ KALIBRIERUNG ERFORDERLICH:\n"
-                    info_text += "Um Dartboard-Felder zu sehen,\n"
-                    info_text += "gehe zu:\n"
-                    info_text += "⚙️ Settings → 📐 Calibration\n"
-                    info_text += "und führe die Kalibrierung durch.\n"
+                    # Show total score if calibration exists
+                    if has_calibration:
+                        info_text += f"━━━━━━━━━━━━━━━\n"
+                        info_text += f"📊 Total Score: {total_score} points\n"
+                    else:
+                        info_text += "\n⚠️ KALIBRIERUNG ERFORDERLICH:\n"
+                        info_text += "Um Dartboard-Felder zu sehen,\n"
+                        info_text += "gehe zu:\n"
+                        info_text += "⚙️ Settings → 📐 Calibration\n"
+                        info_text += "und führe die Kalibrierung durch.\n"
                 else:
                     info_text = "No darts detected\n\nTry:\n- Moving the slider to adjust confidence threshold\n- Ensuring good lighting\n- Checking camera alignment"
                 
+                # Add info about right camera detections if available
+                if self.current_mode == "live" and image_right is not None:
+                    if detections_right:
+                        info_text += f"\n👉 Right Camera: {len(detections_right)} detection(s)\n"
+                    else:
+                        info_text += f"\n👉 Right Camera: No detections\n"
+                
                 self.detection_info.setText(info_text)
                 
-                # Display image
+                # Display left image with detections
                 self.display_image(vis_image, self.image_label_left)
                 
-                # Show plain right view if available
-                if self.current_mode == "live" and image_right is not None:
-                    self.display_image(image_right, self.image_label_right)
+                # Show right view with detections if available
+                if vis_right is not None:
+                    self.display_image(vis_right, self.image_label_right)
             
         except Exception as e:
             logger.error(f"ML detection error: {e}", exc_info=True)

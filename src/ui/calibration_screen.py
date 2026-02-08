@@ -19,7 +19,7 @@ import numpy as np
 import json
 import logging
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, List, Tuple
 
 from src.calibration.board_mapper import CalibrationData, create_default_calibration
 
@@ -137,6 +137,15 @@ class CalibrationScreen(QWidget):
         # State
         self.selecting_center = False
         
+        # Perspective transformation values
+        self.scale_x = 1.0
+        self.scale_y = 1.0
+        self.rotation = 0.0
+        self.skew_x = 0.0
+        self.skew_y = 0.0
+        self.triple_scale = 1.0
+        self.double_scale = 1.0
+        
         # Will be set in showEvent() to use loaded calibration
         self.calibration = None
         
@@ -164,9 +173,9 @@ class CalibrationScreen(QWidget):
                     board_radius_pixels=estimated_radius
                 )
                 logger.info("Created default calibration")
-            
-            # Update UI with loaded values
-            self.update_ui_from_calibration()
+        
+        # Update all UI sliders with calibration values (including perspective transformations)
+        self.update_ui_from_calibration()
         
         if self.app.start_camera():
             self.camera_timer.start(100)  # Update every 100ms
@@ -180,39 +189,53 @@ class CalibrationScreen(QWidget):
         """Update camera feed continuously."""
         try:
             if self.app.camera and self.app.camera.is_started:
-                self.camera_image = self.app.camera.capture()
-                self.update_image_display()
+                stereo = self.app.camera.capture_stereo()
+                if stereo is not None:
+                    self.camera_image = stereo.left
+                    self.update_image_display()
         except Exception as e:
             pass  # Silently ignore camera errors during live feed
     
     def setup_ui(self) -> None:
         """Setup calibration UI layout."""
-        # Create main widget for scroll area
-        scroll_widget = QWidget()
-        layout = QVBoxLayout(scroll_widget)
+        # Main horizontal layout
+        main_layout = QHBoxLayout()
+        
+        # Left side: Camera image
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
         
         # Title
         title = QLabel("Dartboard Calibration")
         title.setStyleSheet("font-size: 24px; font-weight: bold;")
-        layout.addWidget(title)
+        left_layout.addWidget(title)
         
         # Instructions
         instructions = QLabel(
-            "1. Click 'Set Center' and click on the bull's eye\n"
-            "2. Adjust ring radii using sliders\n"
-            "3. Verify overlay matches your dartboard\n"
+            "1. Click 'Set Center' and click on bull's eye\n"
+            "2. Use sliders (right) to adjust overlay\n"
+            "3. Match rings and segment lines\n"
             "4. Click 'Save Calibration'"
         )
         instructions.setStyleSheet("padding: 10px; background: #f0f0f0;")
-        layout.addWidget(instructions)
+        instructions.setWordWrap(True)
+        left_layout.addWidget(instructions)
         
         # Image display with overlay
         self.image_label = QLabel()
         self.image_label.setMouseTracking(True)
         self.image_label.mousePressEvent = self.on_image_click
         self.image_label.setMinimumSize(640, 480)
+        self.image_label.setMaximumSize(800, 600)
         self.update_image_display()
-        layout.addWidget(self.image_label)
+        left_layout.addWidget(self.image_label)
+        left_layout.addStretch()
+        
+        main_layout.addWidget(left_widget, stretch=2)
+        
+        # Right side: Controls in scroll area
+        controls_widget = QWidget()
+        controls_layout = QVBoxLayout(controls_widget)
         
         # Center point control
         center_group = QGroupBox("Board Center")
@@ -240,74 +263,169 @@ class CalibrationScreen(QWidget):
         center_layout.addWidget(self.capture_test_btn)
         
         center_group.setLayout(center_layout)
-        layout.addWidget(center_group)
+        controls_layout.addWidget(center_group)
         
         # Radii adjustments
         radii_group = QGroupBox("Ring Radii (pixels)")
         radii_layout = QVBoxLayout()
         
+        # Global scaling info
+        scale_info = QLabel("Global Scaling: Stretch/compress ring groups together")
+        scale_info.setStyleSheet("padding: 5px; background: #fff3cd; font-weight: bold;")
+        scale_info.setWordWrap(True)
+        radii_layout.addWidget(scale_info)
+        
+        # Triple ring scale
+        radii_layout.addWidget(QLabel("Triple Ring Scale"))
+        self.triple_scale_slider = QSlider(Qt.Orientation.Horizontal)
+        self.triple_scale_slider.setRange(50, 150)
+        self.triple_scale_slider.setValue(100)
+        self.triple_scale_slider.valueChanged.connect(self.on_triple_scale_changed)
+        radii_layout.addWidget(self.triple_scale_slider)
+        self.triple_scale_label = QLabel("100%")
+        radii_layout.addWidget(self.triple_scale_label)
+        
+        # Double ring scale
+        radii_layout.addWidget(QLabel("Double Ring Scale"))
+        self.double_scale_slider = QSlider(Qt.Orientation.Horizontal)
+        self.double_scale_slider.setRange(50, 150)
+        self.double_scale_slider.setValue(100)
+        self.double_scale_slider.valueChanged.connect(self.on_double_scale_changed)
+        radii_layout.addWidget(self.double_scale_slider)
+        self.double_scale_label = QLabel("100%")
+        radii_layout.addWidget(self.double_scale_label)
+        
+        # Separator
+        separator = QLabel("Individual Ring Adjustments:")
+        separator.setStyleSheet("margin-top: 10px; font-weight: bold;")
+        radii_layout.addWidget(separator)
+        
         # Bull's eye
         radii_layout.addWidget(QLabel("Bull's Eye Radius"))
         self.bull_eye_slider = QSlider(Qt.Orientation.Horizontal)
-        self.bull_eye_slider.setRange(5, 50)
-        self.bull_eye_slider.setValue(20)
+        self.bull_eye_slider.setRange(3, 30)
+        self.bull_eye_slider.setValue(12)
         self.bull_eye_slider.valueChanged.connect(self.on_bull_eye_changed)
         radii_layout.addWidget(self.bull_eye_slider)
-        self.bull_eye_label = QLabel("20 px")
+        self.bull_eye_label = QLabel("12 px")
         radii_layout.addWidget(self.bull_eye_label)
         
         # Bull
         radii_layout.addWidget(QLabel("Bull Radius"))
         self.bull_slider = QSlider(Qt.Orientation.Horizontal)
-        self.bull_slider.setRange(10, 100)
-        self.bull_slider.setValue(40)
+        self.bull_slider.setRange(8, 60)
+        self.bull_slider.setValue(25)
         self.bull_slider.valueChanged.connect(self.on_bull_changed)
         radii_layout.addWidget(self.bull_slider)
-        self.bull_label = QLabel("40 px")
+        self.bull_label = QLabel("25 px")
         radii_layout.addWidget(self.bull_label)
         
         # Triple inner
         radii_layout.addWidget(QLabel("Triple Inner Radius"))
         self.triple_inner_slider = QSlider(Qt.Orientation.Horizontal)
-        self.triple_inner_slider.setRange(50, 400)
-        self.triple_inner_slider.setValue(100)
+        self.triple_inner_slider.setRange(30, 250)
+        self.triple_inner_slider.setValue(80)
         self.triple_inner_slider.valueChanged.connect(self.on_triple_inner_changed)
         radii_layout.addWidget(self.triple_inner_slider)
-        self.triple_inner_label = QLabel("100 px")
+        self.triple_inner_label = QLabel("80 px")
         radii_layout.addWidget(self.triple_inner_label)
         
         # Triple outer
         radii_layout.addWidget(QLabel("Triple Outer Radius"))
         self.triple_outer_slider = QSlider(Qt.Orientation.Horizontal)
-        self.triple_outer_slider.setRange(60, 420)
-        self.triple_outer_slider.setValue(120)
+        self.triple_outer_slider.setRange(40, 280)
+        self.triple_outer_slider.setValue(95)
         self.triple_outer_slider.valueChanged.connect(self.on_triple_outer_changed)
         radii_layout.addWidget(self.triple_outer_slider)
-        self.triple_outer_label = QLabel("120 px")
+        self.triple_outer_label = QLabel("95 px")
         radii_layout.addWidget(self.triple_outer_label)
         
         # Double inner
         radii_layout.addWidget(QLabel("Double Inner Radius"))
         self.double_inner_slider = QSlider(Qt.Orientation.Horizontal)
-        self.double_inner_slider.setRange(200, 600)
-        self.double_inner_slider.setValue(160)
+        self.double_inner_slider.setRange(100, 400)
+        self.double_inner_slider.setValue(150)
         self.double_inner_slider.valueChanged.connect(self.on_double_inner_changed)
         radii_layout.addWidget(self.double_inner_slider)
-        self.double_inner_label = QLabel("160 px")
+        self.double_inner_label = QLabel("150 px")
         radii_layout.addWidget(self.double_inner_label)
         
         # Double outer
         radii_layout.addWidget(QLabel("Double Outer Radius"))
         self.double_outer_slider = QSlider(Qt.Orientation.Horizontal)
-        self.double_outer_slider.setRange(210, 650)
-        self.double_outer_slider.setValue(180)
+        self.double_outer_slider.setRange(110, 450)
+        self.double_outer_slider.setValue(165)
         self.double_outer_slider.valueChanged.connect(self.on_double_outer_changed)
         radii_layout.addWidget(self.double_outer_slider)
-        self.double_outer_label = QLabel("180 px")
+        self.double_outer_label = QLabel("165 px")
         radii_layout.addWidget(self.double_outer_label)
         
         radii_group.setLayout(radii_layout)
-        layout.addWidget(radii_group)
+        controls_layout.addWidget(radii_group)
+        
+        # Perspective adjustments
+        perspective_group = QGroupBox("Perspective Adjustment (for angled camera)")
+        perspective_layout = QVBoxLayout()
+        
+        perspective_info = QLabel(
+            "Adjust these if camera is mounted at an angle (ellipse instead of circle)"
+        )
+        perspective_info.setStyleSheet("padding: 5px; background: #e8f4f8;")
+        perspective_info.setWordWrap(True)
+        perspective_layout.addWidget(perspective_info)
+        
+        # Scale X (horizontal stretch)
+        perspective_layout.addWidget(QLabel("Horizontal Stretch"))
+        self.scale_x_slider = QSlider(Qt.Orientation.Horizontal)
+        self.scale_x_slider.setRange(20, 300)
+        self.scale_x_slider.setValue(100)
+        self.scale_x_slider.valueChanged.connect(self.on_scale_x_changed)
+        perspective_layout.addWidget(self.scale_x_slider)
+        self.scale_x_label = QLabel("100%")
+        perspective_layout.addWidget(self.scale_x_label)
+        
+        # Scale Y (vertical stretch)
+        perspective_layout.addWidget(QLabel("Vertical Stretch"))
+        self.scale_y_slider = QSlider(Qt.Orientation.Horizontal)
+        self.scale_y_slider.setRange(20, 300)
+        self.scale_y_slider.setValue(100)
+        self.scale_y_slider.valueChanged.connect(self.on_scale_y_changed)
+        perspective_layout.addWidget(self.scale_y_slider)
+        self.scale_y_label = QLabel("100%")
+        perspective_layout.addWidget(self.scale_y_label)
+        
+        # Rotation
+        perspective_layout.addWidget(QLabel("Rotation (degrees)"))
+        self.rotation_slider = QSlider(Qt.Orientation.Horizontal)
+        self.rotation_slider.setRange(-180, 180)
+        self.rotation_slider.setValue(0)
+        self.rotation_slider.valueChanged.connect(self.on_rotation_changed)
+        perspective_layout.addWidget(self.rotation_slider)
+        self.rotation_label = QLabel("0°")
+        perspective_layout.addWidget(self.rotation_label)
+        
+        # Skew X (horizontal shear for angled view)
+        perspective_layout.addWidget(QLabel("Horizontal Skew (for top/bottom view)"))
+        self.skew_x_slider = QSlider(Qt.Orientation.Horizontal)
+        self.skew_x_slider.setRange(-100, 100)
+        self.skew_x_slider.setValue(0)
+        self.skew_x_slider.valueChanged.connect(self.on_skew_x_changed)
+        perspective_layout.addWidget(self.skew_x_slider)
+        self.skew_x_label = QLabel("0")
+        perspective_layout.addWidget(self.skew_x_label)
+        
+        # Skew Y (vertical shear for angled view)
+        perspective_layout.addWidget(QLabel("Vertical Skew (for side view)"))
+        self.skew_y_slider = QSlider(Qt.Orientation.Horizontal)
+        self.skew_y_slider.setRange(-100, 100)
+        self.skew_y_slider.setValue(0)
+        self.skew_y_slider.valueChanged.connect(self.on_skew_y_changed)
+        perspective_layout.addWidget(self.skew_y_slider)
+        self.skew_y_label = QLabel("0")
+        perspective_layout.addWidget(self.skew_y_label)
+        
+        perspective_group.setLayout(perspective_layout)
+        controls_layout.addWidget(perspective_group)
         
         # Action buttons
         button_layout = QHBoxLayout()
@@ -328,18 +446,17 @@ class CalibrationScreen(QWidget):
         save_btn.clicked.connect(self.save_calibration)
         button_layout.addWidget(save_btn)
         
-        layout.addLayout(button_layout)
+        controls_layout.addLayout(button_layout)
         
-        # Wrap in scroll area
+        # Wrap controls in scroll area
         scroll_area = QScrollArea()
-        scroll_area.setWidget(scroll_widget)
+        scroll_area.setWidget(controls_widget)
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        main_layout.addWidget(scroll_area, stretch=1)
         
-        # Set scroll area as main layout
-        main_layout = QVBoxLayout()
-        main_layout.addWidget(scroll_area)
+        # Set main layout
         self.setLayout(main_layout)
     
     def go_back(self) -> None:
@@ -358,11 +475,18 @@ class CalibrationScreen(QWidget):
         self.triple_outer_slider.blockSignals(True)
         self.double_inner_slider.blockSignals(True)
         self.double_outer_slider.blockSignals(True)
+        self.scale_x_slider.blockSignals(True)
+        self.scale_y_slider.blockSignals(True)
+        self.rotation_slider.blockSignals(True)
+        self.skew_x_slider.blockSignals(True)
+        self.skew_y_slider.blockSignals(True)
+        self.triple_scale_slider.blockSignals(True)
+        self.double_scale_slider.blockSignals(True)
         
         # Update center label
         self.center_label.setText(f"X: {int(self.calibration.center_x)}, Y: {int(self.calibration.center_y)}")
         
-        # Update sliders
+        # Update ring radius sliders
         self.bull_eye_slider.setValue(int(self.calibration.bull_eye_radius))
         self.bull_eye_label.setText(f"{int(self.calibration.bull_eye_radius)} px")
         
@@ -381,6 +505,35 @@ class CalibrationScreen(QWidget):
         self.double_outer_slider.setValue(int(self.calibration.double_outer_radius))
         self.double_outer_label.setText(f"{int(self.calibration.double_outer_radius)} px")
         
+        # Update perspective sliders
+        self.scale_x = self.calibration.scale_x
+        self.scale_x_slider.setValue(int(self.calibration.scale_x * 100))
+        self.scale_x_label.setText(f"{int(self.calibration.scale_x * 100)}%")
+        
+        self.scale_y = self.calibration.scale_y
+        self.scale_y_slider.setValue(int(self.calibration.scale_y * 100))
+        self.scale_y_label.setText(f"{int(self.calibration.scale_y * 100)}%")
+        
+        self.rotation = self.calibration.rotation
+        self.rotation_slider.setValue(int(self.calibration.rotation))
+        self.rotation_label.setText(f"{int(self.calibration.rotation)}°")
+        
+        self.skew_x = self.calibration.skew_x
+        self.skew_x_slider.setValue(int(self.calibration.skew_x * 100))
+        self.skew_x_label.setText(f"{int(self.calibration.skew_x * 100)}")
+        
+        self.skew_y = self.calibration.skew_y
+        self.skew_y_slider.setValue(int(self.calibration.skew_y * 100))
+        self.skew_y_label.setText(f"{int(self.calibration.skew_y * 100)}")
+        
+        self.triple_scale = self.calibration.triple_scale
+        self.triple_scale_slider.setValue(int(self.calibration.triple_scale * 100))
+        self.triple_scale_label.setText(f"{int(self.calibration.triple_scale * 100)}%")
+        
+        self.double_scale = self.calibration.double_scale
+        self.double_scale_slider.setValue(int(self.calibration.double_scale * 100))
+        self.double_scale_label.setText(f"{int(self.calibration.double_scale * 100)}%")
+        
         # Unblock signals
         self.bull_eye_slider.blockSignals(False)
         self.bull_slider.blockSignals(False)
@@ -388,6 +541,13 @@ class CalibrationScreen(QWidget):
         self.triple_outer_slider.blockSignals(False)
         self.double_inner_slider.blockSignals(False)
         self.double_outer_slider.blockSignals(False)
+        self.scale_x_slider.blockSignals(False)
+        self.scale_y_slider.blockSignals(False)
+        self.rotation_slider.blockSignals(False)
+        self.skew_x_slider.blockSignals(False)
+        self.skew_y_slider.blockSignals(False)
+        self.triple_scale_slider.blockSignals(False)
+        self.double_scale_slider.blockSignals(False)
         
         # Update display
         self.update_image_display()
@@ -436,16 +596,15 @@ class CalibrationScreen(QWidget):
         import time
         from pathlib import Path
         
-        # Trigger autofocus and wait for stabilization
-        self.app.camera.trigger_autofocus()
+        # Wait for camera stabilization
         time.sleep(0.5)
         
         # Capture multiple frames and select the best one
         frames = []
         for i in range(10):
-            frame = self.app.camera.capture()
-            if frame is not None:
-                frames.append(frame)
+            stereo = self.app.camera.capture_stereo()
+            if stereo is not None:
+                frames.append(stereo.left)
             time.sleep(0.1)
         
         if not frames:
@@ -516,12 +675,12 @@ class CalibrationScreen(QWidget):
         if reply == QMessageBox.StandardButton.No:
             return
         
-        # Capture frame
-        self.app.camera.trigger_autofocus()
+        # Capture frame with stabilization delay
         import time
-        time.sleep(1)
+        time.sleep(0.5)
         
-        frame = self.app.camera.capture()
+        stereo = self.app.camera.capture_stereo()
+        frame = stereo.left if stereo is not None else None
         if frame is None:
             QMessageBox.critical(self, "Capture Failed", "Could not capture frame.")
             return
@@ -656,7 +815,7 @@ class CalibrationScreen(QWidget):
         """Handle triple inner radius slider change."""
         if self.calibration is None:
             return
-        self.calibration.triple_inner_radius = float(value)
+        self.calibration.triple_inner_radius = float(value * self.triple_scale)
         self.triple_inner_label.setText(f"{value} px")
         self.update_image_display()
         # Auto-save calibration
@@ -667,7 +826,7 @@ class CalibrationScreen(QWidget):
         """Handle triple outer radius slider change."""
         if self.calibration is None:
             return
-        self.calibration.triple_outer_radius = float(value)
+        self.calibration.triple_outer_radius = float(value * self.triple_scale)
         self.triple_outer_label.setText(f"{value} px")
         self.update_image_display()
         # Auto-save calibration
@@ -678,7 +837,7 @@ class CalibrationScreen(QWidget):
         """Handle double inner radius slider change."""
         if self.calibration is None:
             return
-        self.calibration.double_inner_radius = float(value)
+        self.calibration.double_inner_radius = float(value * self.double_scale)
         self.double_inner_label.setText(f"{value} px")
         self.update_image_display()
         # Auto-save calibration
@@ -689,13 +848,89 @@ class CalibrationScreen(QWidget):
         """Handle double outer radius slider change."""
         if self.calibration is None:
             return
-        self.calibration.double_outer_radius = float(value)
+        self.calibration.double_outer_radius = float(value * self.double_scale)
         self.double_outer_label.setText(f"{value} px")
         self.update_image_display()
         # Auto-save calibration
         self.app.mapper.set_calibration(self.calibration)
         self.app.save_calibration()
     
+    def on_scale_x_changed(self, value: int) -> None:
+        """Handle horizontal scale slider change."""
+        self.scale_x = value / 100.0
+        self.scale_x_label.setText(f"{value}%")
+        if self.calibration is not None:
+            self.calibration.scale_x = self.scale_x
+            self.app.mapper.set_calibration(self.calibration)
+            self.app.save_calibration()
+        self.update_image_display()
+    
+    def on_scale_y_changed(self, value: int) -> None:
+        """Handle vertical scale slider change."""
+        self.scale_y = value / 100.0
+        self.scale_y_label.setText(f"{value}%")
+        if self.calibration is not None:
+            self.calibration.scale_y = self.scale_y
+            self.app.mapper.set_calibration(self.calibration)
+            self.app.save_calibration()
+        self.update_image_display()
+    
+    def on_rotation_changed(self, value: int) -> None:
+        """Handle rotation slider change."""
+        self.rotation = float(value)
+        self.rotation_label.setText(f"{value}°")
+        if self.calibration is not None:
+            self.calibration.rotation = self.rotation
+            self.app.mapper.set_calibration(self.calibration)
+            self.app.save_calibration()
+        self.update_image_display()
+    
+    def on_skew_x_changed(self, value: int) -> None:
+        """Handle horizontal skew slider change."""
+        self.skew_x = value / 100.0
+        self.skew_x_label.setText(f"{value}")
+        if self.calibration is not None:
+            self.calibration.skew_x = self.skew_x
+            self.app.mapper.set_calibration(self.calibration)
+            self.app.save_calibration()
+        self.update_image_display()
+    
+    def on_skew_y_changed(self, value: int) -> None:
+        """Handle vertical skew slider change."""
+        self.skew_y = value / 100.0
+        self.skew_y_label.setText(f"{value}")
+        if self.calibration is not None:
+            self.calibration.skew_y = self.skew_y
+            self.app.mapper.set_calibration(self.calibration)
+            self.app.save_calibration()
+        self.update_image_display()    
+    def on_triple_scale_changed(self, value: int):
+        """Handle triple ring scale slider change."""
+        self.triple_scale = value / 100.0
+        self.triple_scale_label.setText(f"{value}%")
+        # Update calibration with scaled values
+        if self.calibration is not None:
+            self.calibration.triple_scale = self.triple_scale
+            self.calibration.triple_inner_radius = float(self.triple_inner_slider.value() * self.triple_scale)
+            self.calibration.triple_outer_radius = float(self.triple_outer_slider.value() * self.triple_scale)
+            # Auto-save
+            self.app.mapper.set_calibration(self.calibration)
+            self.app.save_calibration()
+        self.update_image_display()
+    
+    def on_double_scale_changed(self, value: int):
+        """Handle double ring scale slider change."""
+        self.double_scale = value / 100.0
+        self.double_scale_label.setText(f"{value}%")
+        # Update calibration with scaled values
+        if self.calibration is not None:
+            self.calibration.double_scale = self.double_scale
+            self.calibration.double_inner_radius = float(self.double_inner_slider.value() * self.double_scale)
+            self.calibration.double_outer_radius = float(self.double_outer_slider.value() * self.double_scale)
+            # Auto-save
+            self.app.mapper.set_calibration(self.calibration)
+            self.app.save_calibration()
+        self.update_image_display()    
     def update_image_display(self) -> None:
         """Update image with calibration overlay."""
         if self.camera_image is None or self.calibration is None:
@@ -712,16 +947,49 @@ class CalibrationScreen(QWidget):
         # Draw calibration overlay
         center = (self.calibration.center_x, self.calibration.center_y)
         
-        # Draw rings
-        cv2.circle(display_image, center, int(self.calibration.bull_eye_radius), (0, 255, 0), 2)
-        cv2.circle(display_image, center, int(self.calibration.bull_radius), (0, 255, 255), 2)
-        cv2.circle(display_image, center, int(self.calibration.triple_inner_radius), (255, 255, 0), 2)
-        cv2.circle(display_image, center, int(self.calibration.triple_outer_radius), (255, 255, 0), 2)
-        cv2.circle(display_image, center, int(self.calibration.double_inner_radius), (255, 0, 0), 2)
-        cv2.circle(display_image, center, int(self.calibration.double_outer_radius), (255, 0, 0), 2)
+        # Get ring radii from calibration and apply global scaling
+        bull_eye = int(self.calibration.bull_eye_radius)
+        bull = int(self.calibration.bull_radius)
+        triple_inner = int(self.calibration.triple_inner_radius)
+        triple_outer = int(self.calibration.triple_outer_radius)
+        double_inner = int(self.calibration.double_inner_radius)
+        double_outer = int(self.calibration.double_outer_radius)
+        
+        # Draw rings as ellipses (applying perspective transformation with skew)
+        # Format for cv2.ellipse: (center, (width, height), rotation, start_angle, end_angle, color, thickness)
+        
+        def draw_ellipse_ring(radius, color, thickness=2):
+            # Apply skew by adjusting the center for each radius
+            skewed_center = (
+                int(center[0] + radius * self.skew_x),
+                int(center[1] + radius * self.skew_y)
+            )
+            axes = (int(radius * self.scale_x), int(radius * self.scale_y))
+            cv2.ellipse(display_image, skewed_center, axes, self.rotation, 0, 360, color, thickness)
+        
+        # Draw all rings
+        draw_ellipse_ring(bull_eye, (0, 255, 0), 2)      # Green
+        draw_ellipse_ring(bull, (0, 255, 255), 2)        # Cyan
+        draw_ellipse_ring(triple_inner, (255, 255, 0), 2) # Yellow
+        draw_ellipse_ring(triple_outer, (255, 255, 0), 2) # Yellow
+        draw_ellipse_ring(double_inner, (255, 0, 0), 2)  # Blue
+        draw_ellipse_ring(double_outer, (255, 0, 0), 2)  # Blue
         
         # Draw center cross
         cv2.drawMarker(display_image, center, (0, 255, 0), cv2.MARKER_CROSS, 20, 2)
+        
+        # Draw all 20 segment lines (also transformed)
+        segment_angles = [9, 27, 45, 63, 81, 99, 117, 135, 153, 171, 189, 207, 225, 243, 261, 279, 297, 315, 333, 351]
+        max_radius = double_outer * 1.1  # Slightly beyond outer ring
+        
+        for angle_deg in segment_angles:
+            # Adjust angle for rotation
+            adjusted_angle = angle_deg + self.rotation
+            angle_rad = np.radians(adjusted_angle)
+            # Apply scale and skew
+            end_x = int(center[0] + max_radius * self.scale_x * np.cos(angle_rad) + max_radius * self.skew_x)
+            end_y = int(center[1] + max_radius * self.scale_y * np.sin(angle_rad) + max_radius * self.skew_y)
+            cv2.line(display_image, center, (end_x, end_y), (128, 128, 128), 1)  # Gray segment lines
         
         # Convert to QPixmap
         height, width, channel = display_image.shape
@@ -753,6 +1021,15 @@ class CalibrationScreen(QWidget):
         self.triple_outer_slider.setValue(int(self.calibration.triple_outer_radius))
         self.double_inner_slider.setValue(int(self.calibration.double_inner_radius))
         self.double_outer_slider.setValue(int(self.calibration.double_outer_radius))
+        
+        # Reset perspective/scale sliders
+        self.scale_x_slider.setValue(100)
+        self.scale_y_slider.setValue(100)
+        self.rotation_slider.setValue(0)
+        self.skew_x_slider.setValue(0)
+        self.skew_y_slider.setValue(0)
+        self.triple_scale_slider.setValue(100)
+        self.double_scale_slider.setValue(100)
         
         self.update_image_display()
     

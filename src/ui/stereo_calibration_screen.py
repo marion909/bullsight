@@ -243,13 +243,21 @@ class StereoCalibrationWizard(QWidget):
     
     def update_feed(self):
         """Update camera feed with checkerboard detection."""
-        if self.app.camera is None or not self.app.camera.is_started:
+        if self.app.camera is None:
             # Try to start camera
             if not self.app.start_camera():
-                self.left_image_label.setText("⚠️ Camera not available")
-                self.right_image_label.setText("⚠️ Camera not available")
+                self.left_image_label.setText("⚠️ Camera not available\n\nConnect 2 USB cameras")
+                self.right_image_label.setText("⚠️ Camera not available\n\nConnect 2 USB cameras")
                 self.feed_timer.stop()
-            return
+                return
+        
+        if not self.app.camera.is_started:
+            # Camera exists but not started, try to start it
+            if not self.app.camera.start():
+                self.left_image_label.setText("⚠️ Failed to start cameras")
+                self.right_image_label.setText("⚠️ Failed to start cameras")
+                self.feed_timer.stop()
+                return
         
         if self.is_calibrating:
             return  # Don't update during calibration
