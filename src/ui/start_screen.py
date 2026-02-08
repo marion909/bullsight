@@ -103,6 +103,24 @@ class StartScreen(QWidget):
         calibration_btn.clicked.connect(self.open_calibration)
         layout.addWidget(calibration_btn)
         
+        # Stereo Calibration button
+        stereo_calib_btn = QPushButton("🎯 Stereo Calibration")
+        stereo_calib_btn.setMinimumHeight(80)
+        stereo_calib_btn.setStyleSheet("""
+            QPushButton {
+                font-size: 24px;
+                background-color: #9C27B0;
+                color: white;
+                border-radius: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #7B1FA2;
+            }
+        """)
+        stereo_calib_btn.clicked.connect(self.open_stereo_calibration)
+        layout.addWidget(stereo_calib_btn)
+        
         # Settings button
         settings_btn = QPushButton("Settings")
         settings_btn.setMinimumHeight(80)
@@ -120,6 +138,24 @@ class StartScreen(QWidget):
         """)
         settings_btn.clicked.connect(self.open_settings)
         layout.addWidget(settings_btn)
+        
+        # ML Demo button
+        ml_demo_btn = QPushButton("🤖 ML Detection Demo")
+        ml_demo_btn.setMinimumHeight(80)
+        ml_demo_btn.setStyleSheet("""
+            QPushButton {
+                font-size: 24px;
+                background-color: #9C27B0;
+                color: white;
+                border-radius: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #7B1FA2;
+            }
+        """)
+        ml_demo_btn.clicked.connect(self.open_ml_demo)
+        layout.addWidget(ml_demo_btn)
         
         # Exit button
         exit_btn = QPushButton("Exit")
@@ -154,6 +190,14 @@ class StartScreen(QWidget):
     def open_settings(self) -> None:
         """Navigate to settings screen."""
         self.app.show_screen("settings")
+    
+    def open_ml_demo(self) -> None:
+        """Navigate to ML demo screen."""
+        self.app.show_screen("ml_demo")
+    
+    def open_stereo_calibration(self) -> None:
+        """Navigate to stereo calibration wizard."""
+        self.app.show_screen("stereo_calibration")
     
     def exit_application(self) -> None:
         """Exit the application."""

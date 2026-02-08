@@ -8,6 +8,7 @@ Author: Mario Neuhauser
 """
 
 import sys
+import os
 import logging
 from pathlib import Path
 from typing import Optional
@@ -20,7 +21,9 @@ from src.ui.game_mode_screen import GameModeScreen
 from src.ui.live_score_screen import LiveScoreScreen
 from src.ui.calibration_screen import CalibrationScreen
 from src.ui.settings_screen import SettingsScreen
-from src.vision.camera_manager import CameraManager
+from src.ui.ml_demo_screen import MLDemoScreen
+from src.ui.stereo_calibration_screen import StereoCalibrationWizard
+from src.vision.dual_camera_manager import DualCameraManager, check_available_cameras
 from src.vision.dart_detector import DartDetector
 from src.calibration.board_mapper import BoardMapper, CalibrationData
 from src.game.game_engine import GameEngine
@@ -47,7 +50,7 @@ class BullSightApp(QApplication):
     
     Attributes:
         stack (QStackedWidget): Screen stack for navigation
-        camera (CameraManager): Camera hardware manager
+        camera (DualCameraManager): Dual camera hardware manager for stereo vision
         detector (DartDetector): Dart detection engine
         mapper (BoardMapper): Coordinate mapping system
         game (GameEngine): Current game instance
@@ -68,8 +71,38 @@ class BullSightApp(QApplication):
         self.setApplicationVersion("1.0.0")
         
         # Initialize hardware components
-        self.camera: Optional[CameraManager] = None
-        self.detector = DartDetector()
+        self.camera: Optional[DualCameraManager] = None
+        
+        # Initialize dart detector with ML support if available
+        # Try to enable ML automatically if ultralytics is installed
+        use_ml = os.environ.get('BULLSIGHT_USE_ML', 'auto')
+        
+        # Auto-detect ML availability
+        if use_ml == 'auto':
+            try:
+                import ultralytics
+                use_ml = True
+                logger.info("Ultralytics detected - ML detection enabled automatically")
+            except ImportError:
+                use_ml = False
+                logger.info("Ultralytics not found - using classical CV")
+        else:
+            use_ml = use_ml == '1'
+        
+        ml_model_path = os.environ.get('BULLSIGHT_ML_MODEL', None)
+        ml_confidence = float(os.environ.get('BULLSIGHT_ML_CONFIDENCE', '0.5'))
+        
+        if use_ml:
+            logger.info("ML dart detection enabled")
+            if ml_model_path:
+                logger.info(f"Using custom model: {ml_model_path}")
+        
+        self.detector = DartDetector(
+            use_ml=use_ml,
+            ml_model_path=ml_model_path,
+            ml_confidence=ml_confidence
+        )
+        
         self.mapper = BoardMapper()
         self.game: Optional[GameEngine] = None
         self.settings = SettingsManager()
@@ -100,6 +133,8 @@ class BullSightApp(QApplication):
         self.screens["live_score"] = LiveScoreScreen(self)
         self.screens["calibration"] = CalibrationScreen(self)
         self.screens["settings"] = SettingsScreen(self)
+        self.screens["ml_demo"] = MLDemoScreen(self)
+        self.screens["stereo_calibration"] = StereoCalibrationWizard(self)
         
         for screen in self.screens.values():
             self.stack.addWidget(screen)
@@ -117,19 +152,54 @@ class BullSightApp(QApplication):
     
     def start_camera(self) -> bool:
         """
-        Initialize and start camera.
+        Initialize and start dual camera system.
         
         Returns:
             True if successful, False otherwise
+            
+        Raises:
+            Displays error dialog if less than 2 cameras are available
         """
         try:
             if self.camera is None:
-                self.camera = CameraManager()
-            self.camera.start()
-            logger.info("Camera started successfully")
+                # Check available cameras
+                available_cameras = check_available_cameras()
+                
+                if len(available_cameras) < 2:
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.critical(
+                        None,
+                        "Dual Camera Required",
+                        f"❌ BullSight requires 2 USB cameras for stereo vision.\n\n"
+                        f"Found: {len(available_cameras)} camera(s)\n\n"
+                        f"Please connect a second USB camera and restart the application."
+                    )
+                    logger.error(f"Insufficient cameras: Found {len(available_cameras)}, need 2")
+                    return False
+                
+                # Initialize dual camera manager
+                logger.info(f"Initializing dual camera system (indices: {available_cameras[0]}, {available_cameras[1]})...")
+                self.camera = DualCameraManager(
+                    camera_index_left=available_cameras[0],
+                    camera_index_right=available_cameras[1],
+                    resolution=(1280, 720)
+                )
+            
+            if not self.camera.start():
+                logger.error("Failed to start cameras")
+                return False
+                
+            logger.info("✅ Dual camera system started successfully")
             return True
+            
         except Exception as e:
-            logger.error(f"Failed to start camera: {e}")
+            logger.error(f"Failed to start cameras: {e}")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                None,
+                "Camera Error",
+                f"Failed to initialize cameras:\n\n{str(e)}"
+            )
             return False
     
     def stop_camera(self) -> None:

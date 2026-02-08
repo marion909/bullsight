@@ -1,0 +1,4 @@
+# Machine Learning dependencies for dart detection
+ultralytics>=8.0.0  # YOLOv8
+torch>=2.0.0
+torchvision>=0.15.0
