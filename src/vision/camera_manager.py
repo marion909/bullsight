@@ -44,7 +44,8 @@ class CameraManager:
         self,
         resolution: Tuple[int, int] = (1280, 720),
         enable_autofocus: bool = True,
-        camera_index: int = 0
+        camera_index: int = 0,
+        demo_mode: bool = False
     ):
         """
         Initialize camera manager.
@@ -53,17 +54,23 @@ class CameraManager:
             resolution: Capture resolution as (width, height)
             enable_autofocus: Enable continuous autofocus (picamera2 only)
             camera_index: Camera device index for USB/Webcam (default: 0)
+            demo_mode: Use synthetic frames instead of real camera (for testing)
         """
         self.resolution = resolution
         self.enable_autofocus = enable_autofocus
         self.camera_index = camera_index
+        self.demo_mode = demo_mode
         self.camera: Optional[Union[Picamera2, cv2.VideoCapture]] = None
         self.is_started = False
+        self._demo_frame: Optional[np.ndarray] = None
         
         # Determine which backend to use
-        self.use_picamera = Picamera2 is not None and platform.system() == "Linux"
+        self.use_picamera = Picamera2 is not None and platform.system() == "Linux" and not demo_mode
         
-        backend = "picamera2" if self.use_picamera else "OpenCV VideoCapture"
+        if demo_mode:
+            backend = "Demo Mode (synthetic frames)"
+        else:
+            backend = "picamera2" if self.use_picamera else "OpenCV VideoCapture"
         logger.info(f"CameraManager initialized with {backend}, resolution {resolution}")
     
     def start(self) -> None:
@@ -78,7 +85,9 @@ class CameraManager:
             return
         
         try:
-            if self.use_picamera:
+            if self.demo_mode:
+                self._start_demo_mode()
+            elif self.use_picamera:
                 self._start_picamera()
             else:
                 self._start_opencv_camera()
@@ -127,6 +136,44 @@ class CameraManager:
         
         logger.info(f"OpenCV camera {self.camera_index} initialized")
     
+    def _start_demo_mode(self) -> None:
+        """Initialize demo mode with synthetic frame."""
+        self._demo_frame = self._generate_demo_frame()
+        logger.info("Demo mode initialized with synthetic dartboard")
+    
+    def _generate_demo_frame(self) -> np.ndarray:
+        """Generate a synthetic dartboard frame for demo mode."""
+        width, height = self.resolution
+        frame = np.zeros((height, width, 3), dtype=np.uint8)
+        
+        # Calculate dartboard center and size
+        center_x, center_y = width // 2, height // 2
+        max_radius = min(width, height) // 3
+        
+        # Draw dartboard circles (from outer to inner)
+        # Outer double ring (red/green)
+        cv2.circle(frame, (center_x, center_y), max_radius, (0, 100, 0), -1)  # Dark green
+        cv2.circle(frame, (center_x, center_y), int(max_radius * 0.95), (0, 0, 100), -1)  # Dark red
+        
+        # Triple ring (red/green)
+        cv2.circle(frame, (center_x, center_y), int(max_radius * 0.65), (0, 100, 0), -1)
+        cv2.circle(frame, (center_x, center_y), int(max_radius * 0.60), (0, 0, 100), -1)
+        
+        # Inner single area
+        cv2.circle(frame, (center_x, center_y), int(max_radius * 0.35), (200, 200, 200), -1)  # Light gray
+        
+        # Bull's eye
+        cv2.circle(frame, (center_x, center_y), int(max_radius * 0.10), (0, 255, 0), -1)  # Green bull
+        cv2.circle(frame, (center_x, center_y), int(max_radius * 0.04), (0, 0, 255), -1)  # Red bullseye
+        
+        # Add text overlay
+        cv2.putText(frame, "DEMO MODE", (20, 40), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(frame, "No camera detected", (20, 80), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1)
+        
+        return frame
+    
     def stop(self) -> None:
         """Stop camera and release resources."""
         if not self.is_started or self.camera is None:
@@ -155,16 +202,23 @@ class CameraManager:
         Raises:
             RuntimeError: If camera is not started
         """
-        if not self.is_started or self.camera is None:
+        if not self.is_started:
             raise RuntimeError("Camera not initialized")
         
         try:
-            if self.use_picamera:
+            if self.demo_mode:
+                # Return copy of demo frame to prevent modifications
+                return self._demo_frame.copy()
+            elif self.use_picamera:
+                if self.camera is None:
+                    raise RuntimeError("Camera not initialized")
                 frame = self.camera.capture_array()
                 # Convert RGB to BGR for OpenCV compatibility
                 frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 return frame_bgr
             else:
+                if self.camera is None:
+                    raise RuntimeError("Camera not initialized")
                 ret, frame = self.camera.read()
                 if not ret or frame is None:
                     raise RuntimeError("Failed to read frame from camera")

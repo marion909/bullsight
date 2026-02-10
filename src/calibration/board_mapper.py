@@ -8,8 +8,9 @@ Author: Mario Neuhauser
 """
 
 import numpy as np
-from typing import Optional, Tuple, Dict, Any
-from dataclasses import dataclass
+import cv2
+from typing import Optional, Tuple, Dict, Any, List
+from dataclasses import dataclass, field
 from pathlib import Path
 import json
 import logging
@@ -66,6 +67,9 @@ class CalibrationData:
         triple_outer_radius: Outer radius of triple ring
         double_inner_radius: Inner radius of double ring
         double_outer_radius: Outer radius of double ring
+        perspective_corners: Optional 4 corner points for perspective correction
+                           Format: [(x1,y1), (x2,y2), (x3,y3), (x4,y4)]
+                           Order: top-left, top-right, bottom-right, bottom-left
     """
     center_x: int
     center_y: int
@@ -75,10 +79,20 @@ class CalibrationData:
     triple_outer_radius: float
     double_inner_radius: float
     double_outer_radius: float
+    perspective_corners: Optional[List[Tuple[int, int]]] = field(default=None)
+    # Perspective transformation parameters
+    scale_x: float = 1.0
+    scale_y: float = 1.0
+    rotation: float = 0.0
+    skew_x: float = 0.0
+    skew_y: float = 0.0
+    # Ring group scaling parameters
+    triple_scale: float = 1.0
+    double_scale: float = 1.0
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        data = {
             "center_x": self.center_x,
             "center_y": self.center_y,
             "bull_eye_radius": self.bull_eye_radius,
@@ -86,12 +100,35 @@ class CalibrationData:
             "triple_inner_radius": self.triple_inner_radius,
             "triple_outer_radius": self.triple_outer_radius,
             "double_inner_radius": self.double_inner_radius,
-            "double_outer_radius": self.double_outer_radius
+            "double_outer_radius": self.double_outer_radius,
+            "scale_x": self.scale_x,
+            "scale_y": self.scale_y,
+            "rotation": self.rotation,
+            "skew_x": self.skew_x,
+            "skew_y": self.skew_y,
+            "triple_scale": self.triple_scale,
+            "double_scale": self.double_scale
         }
+        if self.perspective_corners:
+            data["perspective_corners"] = self.perspective_corners
+        return data
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'CalibrationData':
         """Create from dictionary loaded from JSON."""
+        # Convert perspective_corners list of lists to list of tuples if present
+        if "perspective_corners" in data and data["perspective_corners"]:
+            data["perspective_corners"] = [tuple(pt) for pt in data["perspective_corners"]]
+        
+        # Set defaults for new perspective/scale fields (backward compatibility)
+        data.setdefault("scale_x", 1.0)
+        data.setdefault("scale_y", 1.0)
+        data.setdefault("rotation", 0.0)
+        data.setdefault("skew_x", 0.0)
+        data.setdefault("skew_y", 0.0)
+        data.setdefault("triple_scale", 1.0)
+        data.setdefault("double_scale", 1.0)
+        
         return cls(**data)
 
 
@@ -169,6 +206,110 @@ class BoardMapper:
             json.dump(self.calibration.to_dict(), f, indent=2)
         
         logger.info(f"Calibration saved to {filepath}")
+    
+    def apply_perspective_correction(self, image: np.ndarray) -> np.ndarray:
+        """
+        Apply perspective correction to image using ring points.
+        
+        This transforms a tilted/angled view of the dartboard into a frontal view
+        by fitting an ellipse to the marked ring points and transforming it to a circle.
+        
+        Args:
+            image: Input image (BGR)
+            
+        Returns:
+            Corrected image (same size as input)
+            
+        Raises:
+            RuntimeError: If calibration not set
+        """
+        if self.calibration is None:
+            raise RuntimeError("Calibration must be set before perspective correction")
+        
+        # If no ring points defined (need at least 3 for ellipse), return original image
+        if not self.calibration.perspective_corners or len(self.calibration.perspective_corners) < 3:
+            return image
+        
+        height, width = image.shape[:2]
+        
+        try:
+            # Fit ellipse to ring points
+            points_array = np.array(self.calibration.perspective_corners, dtype=np.float32)
+            
+            if len(points_array) < 5:
+                # OpenCV fitEllipse needs at least 5 points, use minimum bounding ellipse for 3-4 points
+                ellipse = cv2.fitEllipse(points_array)
+            else:
+                ellipse = cv2.fitEllipse(points_array)
+            
+            # Ellipse format: ((center_x, center_y), (width, height), angle)
+            center, axes, angle = ellipse
+            
+            # Calculate transformation to make ellipse a perfect circle
+            # We want to transform the ellipse to a circle with radius = average of axes
+            target_radius = (axes[0] + axes[1]) / 4  # Use quarter of sum for reasonable size
+            
+            # Create source points on the ellipse perimeter (8 points evenly distributed)
+            num_points = 8
+            src_ellipse_points = []
+            for i in range(num_points):
+                t = 2 * np.pi * i / num_points
+                # Point on ellipse (parametric form)
+                x = center[0] + (axes[0]/2) * np.cos(t) * np.cos(np.radians(angle)) - (axes[1]/2) * np.sin(t) * np.sin(np.radians(angle))
+                y = center[1] + (axes[0]/2) * np.cos(t) * np.sin(np.radians(angle)) + (axes[1]/2) * np.sin(t) * np.cos(np.radians(angle))
+                src_ellipse_points.append([x, y])
+            
+            # Create corresponding points on perfect circle
+            dst_circle_points = []
+            for i in range(num_points):
+                t = 2 * np.pi * i / num_points
+                x = center[0] + target_radius * np.cos(t)
+                y = center[1] + target_radius * np.sin(t)
+                dst_circle_points.append([x, y])
+            
+            src_points = np.float32(src_ellipse_points)
+            dst_points = np.float32(dst_circle_points)
+            
+            # Find homography matrix (8 points -> more robust than 4-point perspective)
+            matrix, _ = cv2.findHomography(src_points, dst_points, cv2.RANSAC)
+            
+            if matrix is None:
+                logger.warning("Failed to compute homography, returning original image")
+                return image
+            
+            # Apply transformation
+            corrected = cv2.warpPerspective(image, matrix, (width, height), 
+                                           flags=cv2.INTER_LINEAR,
+                                           borderMode=cv2.BORDER_CONSTANT,
+                                           borderValue=(0, 0, 0))
+            
+            logger.debug(f"Perspective correction applied (ellipse {axes} at {angle}° → circle)")
+            return corrected
+            
+        except Exception as e:
+            logger.warning(f"Failed to apply perspective correction: {e}, returning original image")
+            return image
+    
+    def set_perspective_corners(self, corners: List[Tuple[int, int]]) -> None:
+        """
+        Set ring points for perspective correction.
+        
+        Args:
+            corners: List of 3+ points (x, y) on the outer ring of the dartboard.
+                    These points are used to fit an ellipse and correct perspective.
+                    
+        Raises:
+            ValueError: If fewer than 3 points provided
+            RuntimeError: If calibration not set
+        """
+        if self.calibration is None:
+            raise RuntimeError("Calibration must be set before setting ring points")
+        
+        if len(corners) < 3:
+            raise ValueError(f"Expected at least 3 ring points, got {len(corners)}")
+        
+        self.calibration.perspective_corners = corners
+        logger.info(f"Perspective ring points set: {len(corners)} points")
     
     def pixel_to_polar(self, x: int, y: int) -> Tuple[float, float]:
         """
@@ -428,5 +569,13 @@ def create_default_calibration(
         triple_inner_radius=board_radius_pixels * 0.560,
         triple_outer_radius=board_radius_pixels * 0.622,
         double_inner_radius=board_radius_pixels * 0.933,
-        double_outer_radius=board_radius_pixels * 1.000
+        double_outer_radius=board_radius_pixels * 1.000,
+        # Perspective/scale defaults
+        scale_x=1.0,
+        scale_y=1.0,
+        rotation=0.0,
+        skew_x=0.0,
+        skew_y=0.0,
+        triple_scale=1.0,
+        double_scale=1.0
     )

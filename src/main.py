@@ -20,6 +20,7 @@ from src.ui.player_management_screen import PlayerManagementScreen
 from src.ui.game_mode_screen import GameModeScreen
 from src.ui.live_score_screen import LiveScoreScreen
 from src.ui.calibration_screen import CalibrationScreen
+from src.ui.perspective_calibration_screen import PerspectiveCalibrationScreen
 from src.ui.settings_screen import SettingsScreen
 from src.ui.ml_demo_screen import MLDemoScreen
 from src.ui.stereo_calibration_screen import StereoCalibrationWizard
@@ -132,6 +133,7 @@ class BullSightApp(QApplication):
         self.screens["game_mode"] = GameModeScreen(self)
         self.screens["live_score"] = LiveScoreScreen(self)
         self.screens["calibration"] = CalibrationScreen(self)
+        self.screens["perspective_calibration"] = PerspectiveCalibrationScreen(self)
         self.screens["settings"] = SettingsScreen(self)
         self.screens["ml_demo"] = MLDemoScreen(self)
         self.screens["stereo_calibration"] = StereoCalibrationWizard(self)

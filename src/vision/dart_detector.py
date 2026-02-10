@@ -1,8 +1,8 @@
 """
-Dart detection engine using OpenCV difference-based approach.
+Dart detection engine using OpenCV difference-based approach and ML.
 
 This module provides the core computer vision functionality for detecting
-dart impacts on a dartboard through reference image comparison.
+dart impacts on a dartboard through reference image comparison or ML detection.
 
 Author: Mario Neuhauser
 License: MIT
@@ -14,6 +14,13 @@ from typing import Optional, Tuple, List
 from dataclasses import dataclass
 from pathlib import Path
 import logging
+
+# Try to import ML detector
+try:
+    from .ml_dart_detector import MLDartDetector
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
 
 
 # Configure logging
@@ -61,7 +68,10 @@ class DartDetector:
         min_contour_area: int = 100,
         max_contour_area: int = 5000,
         blur_kernel_size: int = 5,
-        threshold_value: int = 30
+        threshold_value: int = 30,
+        use_ml: bool = False,
+        ml_model_path: Optional[str] = None,
+        ml_confidence: float = 0.5
     ):
         """
         Initialize dart detector with configurable parameters.
@@ -71,12 +81,29 @@ class DartDetector:
             max_contour_area: Maximum pixels to consider as dart (default: 5000)
             blur_kernel_size: Gaussian blur kernel size (default: 5)
             threshold_value: Binary threshold for difference (default: 30)
+            use_ml: Use ML-based detection instead of classical CV (default: False)
+            ml_model_path: Path to trained YOLO model (optional)
+            ml_confidence: Minimum ML detection confidence (default: 0.5)
         """
         self.reference_image: Optional[np.ndarray] = None
         self.min_contour_area = min_contour_area
         self.max_contour_area = max_contour_area
         self.blur_kernel_size = blur_kernel_size
         self.threshold_value = threshold_value
+        
+        # ML detection
+        self.use_ml = use_ml and ML_AVAILABLE
+        self.ml_detector = None
+        
+        if self.use_ml:
+            logger.info("Initializing ML-based dart detection")
+            self.ml_detector = MLDartDetector(
+                model_path=ml_model_path,
+                confidence_threshold=ml_confidence
+            )
+            if not self.ml_detector.is_available():
+                logger.warning("ML detector unavailable, falling back to classical CV")
+                self.use_ml = False
         
         logger.info(f"DartDetector initialized with contour range: "
                    f"{min_contour_area}-{max_contour_area} pixels")
@@ -288,6 +315,8 @@ class DartDetector:
         """
         Detect dart in current image compared to reference.
         
+        Uses ML-based detection if enabled, otherwise falls back to classical CV.
+        
         Args:
             current_image: Current BGR image with dart
             
@@ -295,8 +324,25 @@ class DartDetector:
             DartCoordinate if dart detected, None otherwise
             
         Raises:
-            RuntimeError: If no reference image is set
+            RuntimeError: If no reference image is set (classical CV only)
         """
+        # Use ML detection if enabled
+        if self.use_ml and self.ml_detector:
+            result = self.ml_detector.detect(current_image, self.reference_image)
+            if result is not None:
+                x, y = result
+                dart = DartCoordinate(
+                    x=x,
+                    y=y,
+                    confidence=0.8,  # ML detector has its own confidence
+                    contour_area=100.0  # Not applicable for ML
+                )
+                logger.info(f"ML Dart detected: {dart}")
+                return dart
+            logger.info("ML: No dart detected")
+            return None
+        
+        # Classical CV detection (original code)
         # Compute difference
         diff, thresh = self.compute_difference(current_image)
         

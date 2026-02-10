@@ -1,0 +1,28 @@
+{
+  "test_images": [
+    {
+      "image_path": "config\\test_images\\test_20260207_140347.jpg",
+      "dart_x": 640,
+      "dart_y": 360,
+      "segment": "D18",
+      "score": 38,
+      "description": "Double 18"
+    },
+    {
+      "image_path": "config\\test_images\\test_20260207_153110.jpg",
+      "dart_x": 640,
+      "dart_y": 360,
+      "segment": "20",
+      "score": 20,
+      "description": ""
+    },
+    {
+      "image_path": "config\\test_images\\test_20260207_153131.jpg",
+      "dart_x": 640,
+      "dart_y": 360,
+      "segment": "3",
+      "score": 3,
+      "description": ""
+    }
+  ]
+}

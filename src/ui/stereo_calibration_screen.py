@@ -16,12 +16,14 @@ from datetime import datetime
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QProgressBar, QGroupBox, QSpinBox, QMessageBox, QTextEdit
+    QProgressBar, QGroupBox, QSpinBox, QMessageBox, QTextEdit,
+    QRadioButton, QButtonGroup
 )
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QImage, QPixmap
 
 from src.calibration.stereo_calibration_data import StereoCalibrationData, create_stereo_calibration_data
+from src.calibration.dartboard_pattern_detector import DartboardPatternDetector
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +50,15 @@ class StereoCalibrationWizard(QWidget):
         super().__init__()
         self.app = app
         
-        # Calibration parameters
+        # Calibration mode
+        self.calibration_mode = 'checkerboard'  # 'checkerboard' or 'dartboard'
+        
+        # Calibration parameters (checkerboard)
         self.pattern_size = (9, 6)  # Internal corners (columns, rows)
         self.square_size = 1.0  # Square size in arbitrary units (e.g., mm)
+        
+        # Dartboard detector
+        self.dartboard_detector = DartboardPatternDetector()
         
         # Captured calibration data
         self.obj_points = []  # 3D points in real world space
@@ -80,19 +88,30 @@ class StereoCalibrationWizard(QWidget):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
         
-        # Instructions
-        info = QLabel(
-            "📋 Instructions:\n"
-            "1. Print a checkerboard pattern (9×6 internal corners)\n"
-            "2. Hold it flat in view of both cameras\n"
-            "3. Move and rotate pattern to different positions\n"
-            "4. Press SPACE when both cameras detect the pattern\n"
-            "5. Collect 20+ images from various angles\n"
-            "6. Click 'Calibrate Cameras' to compute stereo parameters"
-        )
-        info.setStyleSheet("background: #e8f4f8; padding: 10px; border-radius: 5px;")
-        info.setWordWrap(True)
-        layout.addWidget(info)
+        # Pattern type selection
+        pattern_type_group = QGroupBox("📐 Calibration Pattern Type")
+        pattern_type_layout = QVBoxLayout()
+        
+        self.checkerboard_radio = QRadioButton("🔲 Checkerboard (Traditional - High Precision)")
+        self.dartboard_radio = QRadioButton("🎯 Dartboard (Recommended - Always Available)")
+        self.checkerboard_radio.setChecked(True)
+        
+        self.pattern_type_group = QButtonGroup()
+        self.pattern_type_group.addButton(self.checkerboard_radio, 0)
+        self.pattern_type_group.addButton(self.dartboard_radio, 1)
+        self.pattern_type_group.buttonClicked.connect(self.on_pattern_type_changed)
+        
+        pattern_type_layout.addWidget(self.checkerboard_radio)
+        pattern_type_layout.addWidget(self.dartboard_radio)
+        pattern_type_group.setLayout(pattern_type_layout)
+        layout.addWidget(pattern_type_group)
+        
+        # Instructions (dynamic based on pattern type)
+        self.info_label = QLabel()
+        self.info_label.setStyleSheet("background: #e8f4f8; padding: 10px; border-radius: 5px;")
+        self.info_label.setWordWrap(True)
+        self.update_instructions()
+        layout.addWidget(self.info_label)
         
         # Pattern settings
         settings_group = QGroupBox("Pattern Settings")
@@ -241,6 +260,46 @@ class StereoCalibrationWizard(QWidget):
         self.square_size = self.square_spin.value()
         logger.info(f"Square size changed to {self.square_size}mm")
     
+    def on_pattern_type_changed(self, button):
+        """Handle pattern type change."""
+        if button == self.checkerboard_radio:
+            self.calibration_mode = 'checkerboard'
+            logger.info("Switched to checkerboard calibration mode")
+        else:
+            self.calibration_mode = 'dartboard'
+            logger.info("Switched to dartboard calibration mode")
+        
+        self.update_instructions()
+        
+        # Enable/disable checkerboard settings
+        self.columns_spin.setEnabled(self.calibration_mode == 'checkerboard')
+        self.rows_spin.setEnabled(self.calibration_mode == 'checkerboard')
+        self.square_spin.setEnabled(self.calibration_mode == 'checkerboard')
+    
+    def update_instructions(self):
+        """Update instruction text based on calibration mode."""
+        if self.calibration_mode == 'checkerboard':
+            text = (
+                "📋 Checkerboard Instructions:\n"
+                "1. Print a checkerboard pattern (9×6 internal corners)\n"
+                "2. Hold it flat in view of both cameras\n"
+                "3. Move and rotate pattern to different positions\n"
+                "4. Press SPACE when both cameras detect the pattern\n"
+                "5. Collect 20+ images from various angles\n"
+                "6. Click 'Calibrate Cameras' to compute stereo parameters"
+            )
+        else:  # dartboard
+            text = (
+                "📋 Dartboard Instructions:\n"
+                "1. Ensure dartboard is visible in both camera views\n"
+                "2. The board must be well-lit (avoid shadows)\n"
+                "3. Remove any darts from the board\n"
+                "4. Press SPACE when both cameras detect the pattern\n"
+                "5. Collect 10+ images from different angles (optional)\n"
+                "6. Click 'Calibrate Cameras' to compute stereo parameters"
+            )
+        self.info_label.setText(text)
+    
     def update_feed(self):
         """Update camera feed with checkerboard detection."""
         if self.app.camera is None:
@@ -267,29 +326,16 @@ class StereoCalibrationWizard(QWidget):
         if stereo is None:
             return
         
-        # Detect checkerboard in both images
-        gray_left = cv2.cvtColor(stereo.left, cv2.COLOR_BGR2GRAY)
-        gray_right = cv2.cvtColor(stereo.right, cv2.COLOR_BGR2GRAY)
+        # Detect pattern based on mode
+        if self.calibration_mode == 'checkerboard':
+            ret_left, corners_left, vis_left = self._detect_checkerboard(stereo.left)
+            ret_right, corners_right, vis_right = self._detect_checkerboard(stereo.right)
+        else:  # dartboard
+            ret_left, corners_left, vis_left = self._detect_dartboard(stereo.left)
+            ret_right, corners_right, vis_right = self._detect_dartboard(stereo.right)
         
-        ret_left, corners_left = cv2.findChessboardCorners(
-            gray_left, self.pattern_size,
-            cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE
-        )
-        
-        ret_right, corners_right = cv2.findChessboardCorners(
-            gray_right, self.pattern_size,
-            cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE
-        )
-        
-        # Draw checkerboard if detected
-        vis_left = stereo.left.copy()
-        vis_right = stereo.right.copy()
-        
+        # Update status labels
         if ret_left:
-            # Refine corner detection
-            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-            corners_left = cv2.cornerSubPix(gray_left, corners_left, (11, 11), (-1, -1), criteria)
-            cv2.drawChessboardCorners(vis_left, self.pattern_size, corners_left, ret_left)
             self.left_status_label.setText("✅ Pattern detected!")
             self.left_status_label.setStyleSheet("font-weight: bold; padding: 5px; color: green;")
         else:
@@ -297,9 +343,6 @@ class StereoCalibrationWizard(QWidget):
             self.left_status_label.setStyleSheet("font-weight: bold; padding: 5px; color: orange;")
         
         if ret_right:
-            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-            corners_right = cv2.cornerSubPix(gray_right, corners_right, (11, 11), (-1, -1), criteria)
-            cv2.drawChessboardCorners(vis_right, self.pattern_size, corners_right, ret_right)
             self.right_status_label.setText("✅ Pattern detected!")
             self.right_status_label.setStyleSheet("font-weight: bold; padding: 5px; color: green;")
         else:
@@ -318,6 +361,34 @@ class StereoCalibrationWizard(QWidget):
         # Display images
         self.display_image(vis_left, self.left_image_label)
         self.display_image(vis_right, self.right_image_label)
+    
+    def _detect_checkerboard(self, image: np.ndarray) -> Tuple[bool, Optional[np.ndarray], np.ndarray]:
+        """Detect checkerboard pattern in image."""
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        ret, corners = cv2.findChessboardCorners(
+            gray, self.pattern_size,
+            cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE
+        )
+        
+        vis = image.copy()
+        if ret:
+            # Refine corner detection
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+            corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+            cv2.drawChessboardCorners(vis, self.pattern_size, corners, ret)
+        
+        return ret, corners if ret else None, vis
+    
+    def _detect_dartboard(self, image: np.ndarray) -> Tuple[bool, Optional[np.ndarray], np.ndarray]:
+        """Detect dartboard pattern in image."""
+        result = self.dartboard_detector.detect_dartboard_features(image, visualize=True)
+        
+        if result is not None:
+            points, vis = result
+            return True, points, vis
+        else:
+            return False, None, image
     
     def display_image(self, image: np.ndarray, label: QLabel):
         """Display OpenCV image in QLabel."""
@@ -338,10 +409,15 @@ class StereoCalibrationWizard(QWidget):
         if not hasattr(self, 'current_corners_left') or not hasattr(self, 'current_corners_right'):
             return
         
-        # Prepare object points for this checkerboard
-        objp = np.zeros((self.pattern_size[0] * self.pattern_size[1], 3), np.float32)
-        objp[:, :2] = np.mgrid[0:self.pattern_size[0], 0:self.pattern_size[1]].T.reshape(-1, 2)
-        objp *= self.square_size
+        # Prepare object points based on pattern type
+        if self.calibration_mode == 'checkerboard':
+            # Checkerboard: grid of corners
+            objp = np.zeros((self.pattern_size[0] * self.pattern_size[1], 3), np.float32)
+            objp[:, :2] = np.mgrid[0:self.pattern_size[0], 0:self.pattern_size[1]].T.reshape(-1, 2)
+            objp *= self.square_size
+        else:  # dartboard
+            # Dartboard: use standard 3D reference points
+            objp = self.dartboard_detector.get_3d_reference_points()
         
         # Store points
         self.obj_points.append(objp)

@@ -115,6 +115,53 @@ class SettingsScreen(QWidget):
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
+        layout.addSpacing(30)
+        
+        # Calibration section
+        calib_section = QLabel("Calibration")
+        calib_section.setStyleSheet("font-size: 24px; font-weight: bold;")
+        layout.addWidget(calib_section)
+        
+        calib_btn_layout = QHBoxLayout()
+        
+        # Old calibration (slider-based)
+        old_calib_btn = QPushButton("Manual Calibration\n(Sliders)")
+        old_calib_btn.setMinimumHeight(80)
+        old_calib_btn.setStyleSheet("""
+            QPushButton {
+                font-size: 16px;
+                background-color: #9E9E9E;
+                color: white;
+                border-radius: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #757575;
+            }
+        """)
+        old_calib_btn.clicked.connect(lambda: self.app.show_screen("calibration"))
+        calib_btn_layout.addWidget(old_calib_btn)
+        
+        # New perspective calibration (4-point)
+        new_calib_btn = QPushButton("🎯 Perspective Calibration\n(4-Point, Recommended)")
+        new_calib_btn.setMinimumHeight(80)
+        new_calib_btn.setStyleSheet("""
+            QPushButton {
+                font-size: 16px;
+                background-color: #4CAF50;
+                color: white;
+                border-radius: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        new_calib_btn.clicked.connect(lambda: self.app.show_screen("perspective_calibration"))
+        calib_btn_layout.addWidget(new_calib_btn)
+        
+        layout.addLayout(calib_btn_layout)
+        
         layout.addStretch()
         
         # Back button

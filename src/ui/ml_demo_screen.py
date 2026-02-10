@@ -22,6 +22,7 @@ from PySide6.QtGui import QImage, QPixmap
 
 from .model_finetune_dialog import ModelFinetuneDialog
 from src.calibration.stereo_calibration_data import StereoCalibrationData
+from src.calibration.perspective_calibrator import PerspectiveCalibrator
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,58 @@ class MLDemoScreen(QWidget):
                 logger.warning(f"Failed to load stereo calibration: {e}")
         else:
             logger.info("No stereo calibration found - 3D reconstruction unavailable")
+        
+        # Load perspective calibration if available
+        self.perspective_calib_left = None
+        self.perspective_calib_right = None
+        
+        # Load LEFT camera calibration
+        perspective_calib_path_left = Path("config/perspective_calibration_left.json")
+        if perspective_calib_path_left.exists():
+            try:
+                import json
+                with open(perspective_calib_path_left, 'r') as f:
+                    data = json.load(f)
+                self.perspective_calib_left = PerspectiveCalibrator()
+                if 'homography_matrix' in data:
+                    self.perspective_calib_left.homography_matrix = np.array(data['homography_matrix'])
+                if 'reference_points' in data:
+                    self.perspective_calib_left.reference_points = data['reference_points']
+                if 'board_center_px' in data:
+                    self.perspective_calib_left.board_center_px = tuple(data['board_center_px']) if data['board_center_px'] else None
+                if 'board_radius_px' in data:
+                    self.perspective_calib_left.board_radius_px = data['board_radius_px']
+                if 'rotation_offset' in data:
+                    self.perspective_calib_left.rotation_offset = data['rotation_offset']
+                logger.info(f"LEFT perspective calibration loaded (rotation: {self.perspective_calib_left.rotation_offset}°)")
+            except Exception as e:
+                logger.warning(f"Failed to load LEFT perspective calibration: {e}")
+        else:
+            logger.info("No LEFT perspective calibration found")
+        
+        # Load RIGHT camera calibration
+        perspective_calib_path_right = Path("config/perspective_calibration_right.json")
+        if perspective_calib_path_right.exists():
+            try:
+                import json
+                with open(perspective_calib_path_right, 'r') as f:
+                    data = json.load(f)
+                self.perspective_calib_right = PerspectiveCalibrator()
+                if 'homography_matrix' in data:
+                    self.perspective_calib_right.homography_matrix = np.array(data['homography_matrix'])
+                if 'reference_points' in data:
+                    self.perspective_calib_right.reference_points = data['reference_points']
+                if 'board_center_px' in data:
+                    self.perspective_calib_right.board_center_px = tuple(data['board_center_px']) if data['board_center_px'] else None
+                if 'board_radius_px' in data:
+                    self.perspective_calib_right.board_radius_px = data['board_radius_px']
+                if 'rotation_offset' in data:
+                    self.perspective_calib_right.rotation_offset = data['rotation_offset']
+                logger.info(f"RIGHT perspective calibration loaded (rotation: {self.perspective_calib_right.rotation_offset}°)")
+            except Exception as e:
+                logger.warning(f"Failed to load RIGHT perspective calibration: {e}")
+        else:
+            logger.info("No RIGHT perspective calibration found")
         
         self.setup_ui()
         
@@ -302,6 +355,9 @@ class MLDemoScreen(QWidget):
         """Start camera when screen is shown."""
         super().showEvent(event)
         
+        # Reload perspective calibration in case it was updated
+        self.load_perspective_calibration()
+        
         # Ensure camera is started
         if self.app.camera is None:
             logger.info("Camera not started, attempting to start...")
@@ -314,6 +370,58 @@ class MLDemoScreen(QWidget):
                 logger.warning("No camera available for live mode")
                 self.image_label.setText("⚠️ No Camera Available\n\nCamera not detected or failed to start.\n\nTry:\n- Check camera connection\n- Enable demo mode: BULLSIGHT_DEMO_MODE=1\n- Or load a test image instead")
         logger.info("ML Demo screen shown")
+    
+    def load_perspective_calibration(self):
+        """Load or reload perspective calibration for both cameras."""
+        # Load LEFT camera calibration
+        perspective_calib_path_left = Path("config/perspective_calibration_left.json")
+        if perspective_calib_path_left.exists():
+            try:
+                import json
+                with open(perspective_calib_path_left, 'r') as f:
+                    data = json.load(f)
+                self.perspective_calib_left = PerspectiveCalibrator()
+                if 'homography_matrix' in data:
+                    self.perspective_calib_left.homography_matrix = np.array(data['homography_matrix'])
+                if 'reference_points' in data:
+                    self.perspective_calib_left.reference_points = data['reference_points']
+                if 'board_center_px' in data:
+                    self.perspective_calib_left.board_center_px = tuple(data['board_center_px']) if data['board_center_px'] else None
+                if 'board_radius_px' in data:
+                    self.perspective_calib_left.board_radius_px = data['board_radius_px']
+                if 'rotation_offset' in data:
+                    self.perspective_calib_left.rotation_offset = data['rotation_offset']
+                logger.info(f"LEFT perspective calibration reloaded (rotation: {self.perspective_calib_left.rotation_offset}°)")
+            except Exception as e:
+                logger.warning(f"Failed to load LEFT perspective calibration: {e}")
+                self.perspective_calib_left = None
+        else:
+            self.perspective_calib_left = None
+        
+        # Load RIGHT camera calibration
+        perspective_calib_path_right = Path("config/perspective_calibration_right.json")
+        if perspective_calib_path_right.exists():
+            try:
+                import json
+                with open(perspective_calib_path_right, 'r') as f:
+                    data = json.load(f)
+                self.perspective_calib_right = PerspectiveCalibrator()
+                if 'homography_matrix' in data:
+                    self.perspective_calib_right.homography_matrix = np.array(data['homography_matrix'])
+                if 'reference_points' in data:
+                    self.perspective_calib_right.reference_points = data['reference_points']
+                if 'board_center_px' in data:
+                    self.perspective_calib_right.board_center_px = tuple(data['board_center_px']) if data['board_center_px'] else None
+                if 'board_radius_px' in data:
+                    self.perspective_calib_right.board_radius_px = data['board_radius_px']
+                if 'rotation_offset' in data:
+                    self.perspective_calib_right.rotation_offset = data['rotation_offset']
+                logger.info(f"RIGHT perspective calibration reloaded (rotation: {self.perspective_calib_right.rotation_offset}°)")
+            except Exception as e:
+                logger.warning(f"Failed to load RIGHT perspective calibration: {e}")
+                self.perspective_calib_right = None
+        else:
+            self.perspective_calib_right = None
     
     def hideEvent(self, event):
         """Stop camera when screen is hidden."""
@@ -413,19 +521,202 @@ class MLDemoScreen(QWidget):
         
         try:
             show_all = self.show_all_btn.isChecked()
+            logger.info(f"🔍 Starting detection: current_mode={self.current_mode}, show_all={show_all}, image_right={'Present' if image_right is not None else 'None'}")
             
-            # Use stereo detection if both images and calibration available
-            if self.current_mode == "live" and image_right is not None and self.stereo_calib is not None:
-                # Stereo detection with 3D reconstruction
-                max_darts = 10 if show_all else 1
-                matches = ml_detector.detect_stereo(image, image_right, self.stereo_calib, max_darts=max_darts)
+            # Use stereo visualization if both images available (even without 3D reconstruction)
+            if self.current_mode == "live" and image_right is not None:
+                # Both cameras available - use stereo visualization
+                if self.stereo_calib is not None:
+                    # Full stereo detection with 3D reconstruction
+                    max_darts = 10 if show_all else 1
+                    logger.info(f"🎬 Using STEREO 3D reconstruction (stereo_calib exists)")
+                    matches = ml_detector.detect_stereo(image, image_right, self.stereo_calib, max_darts=max_darts)
+                else:
+                    # No stereo calib - run detection on both images independently
+                    max_darts = 10 if show_all else 1
+                    logger.info(f"📊 Running ML detection: max_darts={max_darts}, show_all={show_all}")
+                    
+                    detections_left = ml_detector.detect_multiple(image, max_darts=max_darts)
+                    detections_right = ml_detector.detect_multiple(image_right, max_darts=max_darts)
+                    
+                    logger.info(f"📍 LEFT raw detections: {len(detections_left)} found")
+                    logger.info(f"📍 RIGHT raw detections: {len(detections_right)} found")
+                    
+                    # Filter detections to only include those within the dartboard circle
+                    def is_inside_dartboard(x, y, calibrator, side=""):
+                        """Check if point (x,y) is inside the calibrated dartboard"""
+                        if calibrator is None:
+                            logger.warning(f"⚠️ {side} calibrator is None, accepting all detections")
+                            return True
+                        if calibrator.board_center_px is None:
+                            logger.warning(f"⚠️ {side} board_center_px is None, accepting all detections")
+                            return True
+                        if calibrator.board_radius_px is None:
+                            logger.warning(f"⚠️ {side} board_radius_px is None, accepting all detections")
+                            return True
+                        
+                        cx, cy = calibrator.board_center_px
+                        r = calibrator.board_radius_px
+                        dist = ((x - cx)**2 + (y - cy)**2) ** 0.5
+                        is_inside = dist <= r
+                        return is_inside
+                    
+                    # Log calibration info
+                    if self.perspective_calib_left:
+                        logger.info(f"👈 LEFT calib: center={self.perspective_calib_left.board_center_px}, radius={self.perspective_calib_left.board_radius_px}")
+                    else:
+                        logger.warning("⚠️ LEFT perspective_calib_left is None!")
+                    
+                    if self.perspective_calib_right:
+                        logger.info(f"👉 RIGHT calib: center={self.perspective_calib_right.board_center_px}, radius={self.perspective_calib_right.board_radius_px}")
+                    else:
+                        logger.warning("⚠️ RIGHT perspective_calib_right is None!")
+                    
+                    # Filter LEFT detections with detailed logging
+                    detections_left_filtered = []
+                    for detection in detections_left:
+                        x, y, conf, _ = detection
+                        if is_inside_dartboard(x, y, self.perspective_calib_left, "LEFT"):
+                            detections_left_filtered.append(detection)
+                        else:
+                            logger.info(f"❌ LEFT detection filtered OUT: ({x:.0f}, {y:.0f}) conf={conf:.0%}")
+                    logger.info(f"🎯 LEFT filtered: {len(detections_left)} → {len(detections_left_filtered)} inside dartboard")
+                    
+                    # Filter RIGHT detections with detailed logging
+                    detections_right_filtered = []
+                    for detection in detections_right:
+                        x, y, conf, _ = detection
+                        if is_inside_dartboard(x, y, self.perspective_calib_right, "RIGHT"):
+                            detections_right_filtered.append(detection)
+                        else:
+                            logger.info(f"❌ RIGHT detection filtered OUT: ({x:.0f}, {y:.0f}) conf={conf:.0%}")
+                    logger.info(f"🎯 RIGHT filtered: {len(detections_right)} → {len(detections_right_filtered)} inside dartboard")
+                    
+                    # Use filtered detections
+                    detections_left = detections_left_filtered
+                    detections_right = detections_right_filtered
+                    
+                    # Create matches with both left and right detections
+                    # Left detections
+                    matches = [{'left_2d': (x, y), 'confidence_left': conf} for x, y, conf, _ in detections_left]
+                    # Right detections - add as separate entries with only right_2d
+                    matches.extend([{'right_2d': (x, y), 'confidence_right': conf} for x, y, conf, _ in detections_right])
+                    
+                    logger.info(f"🎯 Total matches created: {len(matches)}")
                 
                 # Visualize on both views
                 vis_left = self.visualize_stereo_detections(image.copy(), matches, 'left')
                 vis_right = self.visualize_stereo_detections(image_right.copy(), matches, 'right')
                 
                 # Display stereo info
-                self.display_stereo_detections(matches)
+                if self.stereo_calib is not None:
+                    self.display_stereo_detections(matches)
+                else:
+                    # No stereo 3D calib - show detections, but highlight consensus ones with field values
+                    left_detections = [m for m in matches if 'left_2d' in m]
+                    right_detections = [m for m in matches if 'right_2d' in m]
+                    logger.info(f"📊 Detection info: LEFT={len(left_detections)}, RIGHT={len(right_detections)} from {len(matches)} total matches")
+                    
+                    # Map each detection to dartboard fields
+                    left_fields = []
+                    for x, y, conf, _ in detections_left:
+                        field = None
+                        if self.perspective_calib_left and self.perspective_calib_left.homography_matrix is not None:
+                            try:
+                                field = self.perspective_calib_left.map_coordinate_to_field(int(x), int(y))
+                            except Exception as e:
+                                logger.debug(f"LEFT field mapping error: {e}")
+                        left_fields.append({'pos': (x, y), 'conf': conf, 'field': field})
+                    
+                    right_fields = []
+                    for x, y, conf, _ in detections_right:
+                        field = None
+                        if self.perspective_calib_right and self.perspective_calib_right.homography_matrix is not None:
+                            try:
+                                field = self.perspective_calib_right.map_coordinate_to_field(int(x), int(y))
+                            except Exception as e:
+                                logger.debug(f"RIGHT field mapping error: {e}")
+                        right_fields.append({'pos': (x, y), 'conf': conf, 'field': field})
+                    
+                    # Find matched fields (where both cameras detect the same dartboard field)
+                    matched_fields = []
+                    for left in left_fields:
+                        if left['field'] is None:
+                            continue
+                        for right in right_fields:
+                            if right['field'] is None:
+                                continue
+                            # Check if same field (zone + segment)
+                            if (left['field'].zone == right['field'].zone and 
+                                left['field'].segment == right['field'].segment):
+                                
+                                # Use field from camera with highest confidence
+                                if left['conf'] > right['conf']:
+                                    best_field = left['field']
+                                    best_conf = left['conf']
+                                    best_source = 'LEFT'
+                                else:
+                                    best_field = right['field']
+                                    best_conf = right['conf']
+                                    best_source = 'RIGHT'
+                                
+                                matched_fields.append({
+                                    'field': best_field,
+                                    'left_conf': left['conf'],
+                                    'right_conf': right['conf'],
+                                    'best_conf': best_conf,
+                                    'best_source': best_source
+                                })
+                                break
+                    
+                    # Build info text
+                    if matched_fields:
+                        info_text = f"✅ Consensus Darts: {len(matched_fields)}\n\n"
+                        total_score = 0
+                        for i, match in enumerate(matched_fields, 1):
+                            field = match['field']
+                            left_conf = match['left_conf']
+                            right_conf = match['right_conf']
+                            best_source = match['best_source']
+                            best_conf = match['best_conf']
+                            
+                            # Format dartboard field
+                            if field.zone == "bull_eye":
+                                field_str = "🎯 Bull's Eye (50)"
+                                points = 50
+                            elif field.zone == "bull":
+                                field_str = "🎪 Outer Bull (25)"
+                                points = 25
+                            elif field.zone == "miss":
+                                field_str = "❌ Miss"
+                                points = 0
+                            elif field.zone == "triple":
+                                field_str = f"🔺 Triple {field.segment} ({field.score})"
+                                points = field.score
+                            elif field.zone == "double":
+                                field_str = f"🔷 Double {field.segment} ({field.score})"
+                                points = field.score
+                            else:  # single
+                                field_str = f"🔹 Single {field.segment} ({field.score})"
+                                points = field.score
+                            
+                            # Show which camera had highest confidence
+                            source_emoji = "👈" if best_source == "LEFT" else "👉"
+                            info_text += f"Dart #{i}: {field_str}\n"
+                            info_text += f"  {source_emoji} {best_source} ({best_conf:.0%}) | L:{left_conf:.0%} R:{right_conf:.0%}\n"
+                            total_score += points
+                        
+                        info_text += f"\n━━━━━━━━━━━━━━━\n"
+                        info_text += f"📊 Total: {total_score} points\n"
+                    else:
+                        info_text = f"⚠️ Unmatched detections:\n"
+                        if left_detections:
+                            info_text += f"  👈 LEFT: {len(left_detections)} dart(s)\n"
+                        if right_detections:
+                            info_text += f"  👉 RIGHT: {len(right_detections)} dart(s)\n"
+                        info_text += f"\n(No consensus between cameras)"
+                    
+                    self.detection_info.setText(info_text)
                 
                 # Show both visualized images
                 self.display_image(vis_left, self.image_label_left)
@@ -472,36 +763,44 @@ class MLDemoScreen(QWidget):
                         info_text += f"  Confidence: {conf:.1%}\n"
                         info_text += f"  Position: ({int(x)}, {int(y)})\n"
                         
-                        # Map to dartboard field if calibration exists
-                        has_calibration = self.app.mapper.calibration is not None
-                        if has_calibration:
+                        # Map to dartboard field - use perspective calibration if available
+                        field = None
+                        if self.perspective_calib_left and self.perspective_calib_left.homography_matrix is not None:
+                            try:
+                                field = self.perspective_calib_left.map_coordinate_to_field(int(x), int(y))
+                            except Exception as e:
+                                logger.debug(f"Could not map coordinate with perspective calib: {e}")
+                        elif self.app.mapper.calibration is not None:
                             try:
                                 field = self.app.mapper.map_coordinate(int(x), int(y))
-                                if field:
-                                    # Format dartboard field nicely
-                                    if field.zone == "bull_eye":
-                                        field_str = "🎯 Bull's Eye (50 points)"
-                                        points = 50
-                                    elif field.zone == "bull":
-                                        field_str = "🎪 Outer Bull (25 points)"
-                                        points = 25
-                                    elif field.zone == "miss":
-                                        field_str = "❌ Miss (0 points)"
-                                        points = 0
-                                    elif field.zone == "triple":
-                                        field_str = f"🔺 Triple {field.segment} ({field.score} points)"
-                                        points = field.score
-                                    elif field.zone == "double":
-                                        field_str = f"🔷 Double {field.segment} ({field.score} points)"
-                                        points = field.score
-                                    else:  # single
-                                        field_str = f"🔹 Single {field.segment} ({field.score} points)"
-                                        points = field.score
-                                    
-                                    info_text += f"  Field: {field_str}\n"
-                                    total_score += points
                             except Exception as e:
-                                logger.debug(f"Could not map coordinate: {e}")
+                                logger.debug(f"Could not map coordinate with old calib: {e}")
+                        
+                        # Map to dartboard field if calibration exists
+                        has_calibration = field is not None
+                        if field:
+                            # Format dartboard field nicely
+                            if field.zone == "bull_eye":
+                                field_str = "🎯 Bull's Eye (50 points)"
+                                points = 50
+                            elif field.zone == "bull":
+                                field_str = "🎪 Outer Bull (25 points)"
+                                points = 25
+                            elif field.zone == "miss":
+                                field_str = "❌ Miss (0 points)"
+                                points = 0
+                            elif field.zone == "triple":
+                                field_str = f"🔺 Triple {field.segment} ({field.score} points)"
+                                points = field.score
+                            elif field.zone == "double":
+                                field_str = f"🔷 Double {field.segment} ({field.score} points)"
+                                points = field.score
+                            else:  # single
+                                field_str = f"🔹 Single {field.segment} ({field.score} points)"
+                                points = field.score
+                            
+                            info_text += f"  Field: {field_str}\n"
+                            total_score += points
                     
                     info_text += "\n"
                 
@@ -573,36 +872,43 @@ class MLDemoScreen(QWidget):
                 X, Y, Z = match['position_3d']
                 info_text += f"  📐 3D Position: ({X:.1f}, {Y:.1f}, {Z:.1f})mm\n"
             
-            # Map to dartboard field using left camera coordinates
-            has_calibration = self.app.mapper.calibration is not None
-            if has_calibration:
+            # Map to dartboard field using left camera coordinates - use perspective calibration if available
+            field = None
+            if self.perspective_calib_left and self.perspective_calib_left.homography_matrix is not None:
+                try:
+                    field = self.perspective_calib_left.map_coordinate_to_field(int(x_l), int(y_l))
+                except Exception as e:
+                    logger.debug(f"Could not map coordinate with perspective calib: {e}")
+            elif self.app.mapper.calibration is not None:
                 try:
                     field = self.app.mapper.map_coordinate(int(x_l), int(y_l))
-                    if field:
-                        # Format dartboard field nicely
-                        if field.zone == "bull_eye":
-                            field_str = "🎯 Bull's Eye (50 points)"
-                            points = 50
-                        elif field.zone == "bull":
-                            field_str = "🎪 Outer Bull (25 points)"
-                            points = 25
-                        elif field.zone == "miss":
-                            field_str = "❌ Miss (0 points)"
-                            points = 0
-                        elif field.zone == "triple":
-                            field_str = f"🔺 Triple {field.segment} ({field.score} points)"
-                            points = field.score
-                        elif field.zone == "double":
-                            field_str = f"🔷 Double {field.segment} ({field.score} points)"
-                            points = field.score
-                        else:  # single
-                            field_str = f"🔹 Single {field.segment} ({field.score} points)"
-                            points = field.score
-                        
-                        info_text += f"  Field: {field_str}\n"
-                        total_score += points
                 except Exception as e:
-                    logger.debug(f"Could not map coordinate: {e}")
+                    logger.debug(f"Could not map coordinate with old calib: {e}")
+            
+            has_calibration = field is not None
+            if field:
+                # Format dartboard field nicely
+                if field.zone == "bull_eye":
+                    field_str = "🎯 Bull's Eye (50 points)"
+                    points = 50
+                elif field.zone == "bull":
+                    field_str = "🎪 Outer Bull (25 points)"
+                    points = 25
+                elif field.zone == "miss":
+                    field_str = "❌ Miss (0 points)"
+                    points = 0
+                elif field.zone == "triple":
+                    field_str = f"🔺 Triple {field.segment} ({field.score} points)"
+                    points = field.score
+                elif field.zone == "double":
+                    field_str = f"🔷 Double {field.segment} ({field.score} points)"
+                    points = field.score
+                else:  # single
+                    field_str = f"🔹 Single {field.segment} ({field.score} points)"
+                    points = field.score
+                
+                info_text += f"  Field: {field_str}\n"
+                total_score += points
             
             info_text += "\n"
         
@@ -620,18 +926,24 @@ class MLDemoScreen(QWidget):
         """Visualize stereo detections on one side (left or right)."""
         vis_image = image.copy()
         
-        # Draw board overlay if enabled and on left camera
-        if side == 'left' and self.show_board_overlay_btn.isChecked() and self.app.mapper.calibration:
-            vis_image = self.draw_board_overlay(vis_image)
+        # Draw board overlay if enabled
+        if self.show_board_overlay_btn.isChecked():
+            camera = "LEFT" if side == 'left' else "RIGHT"
+            logger.info(f"🎬 visualize_stereo_detections called with side='{side}' → camera='{camera}'")
+            vis_image = self.draw_board_overlay(vis_image, camera)
         
         # Draw detections
         for i, match in enumerate(matches, 1):
-            # Get coordinates for this side
+            # Get coordinates for this side - skip if not present
             if side == 'left':
+                if 'left_2d' not in match:
+                    continue
                 x, y = match['left_2d']
                 conf = match['confidence_left']
                 color = (0, 255, 0)  # Green for left
             else:
+                if 'right_2d' not in match:
+                    continue
                 x, y = match['right_2d']
                 conf = match['confidence_right']
                 color = (0, 255, 255)  # Yellow for right
@@ -718,8 +1030,8 @@ class MLDemoScreen(QWidget):
         vis_image = image.copy()
         
         # Draw board overlay if enabled
-        if self.show_board_overlay_btn.isChecked() and self.app.mapper.calibration:
-            vis_image = self.draw_board_overlay(vis_image)
+        if self.show_board_overlay_btn.isChecked():
+            vis_image = self.draw_board_overlay(vis_image, "LEFT")
         
         # Draw detections
         for i, detection in enumerate(detections, 1):
@@ -770,21 +1082,52 @@ class MLDemoScreen(QWidget):
         
         return vis_image
     
-    def draw_board_overlay(self, image: np.ndarray) -> np.ndarray:
-        """Draw dartboard calibration overlay."""
-        calibration = self.app.mapper.calibration
-        center = (calibration.center_x, calibration.center_y)
+    def draw_board_overlay(self, image: np.ndarray, camera: str = "LEFT") -> np.ndarray:
+        """Draw dartboard calibration overlay using perspective calibration if available.
         
-        # Draw rings (thin lines)
-        cv2.circle(image, center, int(calibration.bull_eye_radius), (0, 255, 0), 1)
-        cv2.circle(image, center, int(calibration.bull_radius), (0, 255, 255), 1)
-        cv2.circle(image, center, int(calibration.triple_inner_radius), (255, 255, 0), 1)
-        cv2.circle(image, center, int(calibration.triple_outer_radius), (255, 255, 0), 1)
-        cv2.circle(image, center, int(calibration.double_inner_radius), (255, 0, 0), 1)
-        cv2.circle(image, center, int(calibration.double_outer_radius), (255, 0, 0), 1)
+        Args:
+            image: Input image
+            camera: Which camera ("LEFT" or "RIGHT")
+        """
+        # LEFT camera: use perspective calibration or old fallback
+        if camera == "LEFT":
+            if self.perspective_calib_left and self.perspective_calib_left.homography_matrix is not None:
+                logger.info(f"✅ Drawing LEFT overlay with perspective homography")
+                return self.perspective_calib_left.draw_overlay(
+                    image, 
+                    show_segments=True, 
+                    show_rings=True, 
+                    show_reference_points=False
+                )
+            # Fallback to old calibration method (was single-camera, from left)
+            elif self.app.mapper.calibration:
+                logger.info(f"⚠️ Drawing LEFT overlay with OLD calibration (fallback)")
+                calibration = self.app.mapper.calibration
+                center = (calibration.center_x, calibration.center_y)
+                
+                # Draw rings (thin lines)
+                cv2.circle(image, center, int(calibration.bull_eye_radius), (0, 255, 0), 1)
+                cv2.circle(image, center, int(calibration.bull_radius), (0, 255, 255), 1)
+                cv2.circle(image, center, int(calibration.triple_inner_radius), (255, 255, 0), 1)
+                cv2.circle(image, center, int(calibration.triple_outer_radius), (255, 255, 0), 1)
+                cv2.circle(image, center, int(calibration.double_inner_radius), (255, 0, 0), 1)
+                cv2.circle(image, center, int(calibration.double_outer_radius), (255, 0, 0), 1)
+                
+                # Draw center
+                cv2.drawMarker(image, center, (0, 255, 0), cv2.MARKER_CROSS, 10, 1)
         
-        # Draw center
-        cv2.drawMarker(image, center, (0, 255, 0), cv2.MARKER_CROSS, 10, 1)
+        # RIGHT camera: ONLY use perspective calibration (no fallback)
+        elif camera == "RIGHT":
+            if self.perspective_calib_right and self.perspective_calib_right.homography_matrix is not None:
+                logger.info(f"✅ Drawing RIGHT overlay with perspective homography")
+                return self.perspective_calib_right.draw_overlay(
+                    image, 
+                    show_segments=True, 
+                    show_rings=True, 
+                    show_reference_points=False
+                )
+            else:
+                logger.info(f"❌ RIGHT perspective calibration not available")
         
         return image
     

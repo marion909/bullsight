@@ -1,0 +1,7 @@
+path: C:\Projekte\BullSight\training_data\finetuning_data
+train: images/train
+val: images/train
+test: images/train
+nc: 1
+names:
+  0: dart

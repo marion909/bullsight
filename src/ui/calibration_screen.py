@@ -136,6 +136,8 @@ class CalibrationScreen(QWidget):
         
         # State
         self.selecting_center = False
+        self.drag_mode_enabled = False
+        self.dragging_point = None  # (point_type, point_index) or None
         
         # Perspective transformation values
         self.scale_x = 1.0
@@ -148,6 +150,13 @@ class CalibrationScreen(QWidget):
         
         # Will be set in showEvent() to use loaded calibration
         self.calibration = None
+        
+        # Control points for manual dragging
+        # Each point: {"ring": ring_name, "angle": degrees, "x": pixel_x, "y": pixel_y}
+        self.control_points: List[dict] = []
+        
+        # Ellipse parameters per ring (for deformed drawing)
+        self.ring_ellipses = {}
         
         # Setup live camera updates
         self.camera_timer = QTimer()
@@ -224,7 +233,9 @@ class CalibrationScreen(QWidget):
         # Image display with overlay
         self.image_label = QLabel()
         self.image_label.setMouseTracking(True)
-        self.image_label.mousePressEvent = self.on_image_click
+        self.image_label.mousePressEvent = self.on_image_press
+        self.image_label.mouseMoveEvent = self.on_image_move
+        self.image_label.mouseReleaseEvent = self.on_image_release
         self.image_label.setMinimumSize(640, 480)
         self.image_label.setMaximumSize(800, 600)
         self.update_image_display()
@@ -243,6 +254,19 @@ class CalibrationScreen(QWidget):
         
         self.center_label = QLabel("X: 0, Y: 0")
         center_layout.addWidget(self.center_label)
+        
+        # Drag mode toggle
+        self.drag_mode_btn = QPushButton("🎯 Enable Drag Mode")
+        self.drag_mode_btn.setMinimumHeight(60)
+        self.drag_mode_btn.setStyleSheet("background-color: #9E9E9E; color: white; font-weight: bold;")
+        self.drag_mode_btn.setCheckable(True)
+        self.drag_mode_btn.clicked.connect(self.toggle_drag_mode)
+        center_layout.addWidget(self.drag_mode_btn)
+        
+        drag_info = QLabel("Drag control points on rings/segments to adjust calibration manually")
+        drag_info.setStyleSheet("padding: 5px; background: #e3f2fd; font-size: 11px;")
+        drag_info.setWordWrap(True)
+        center_layout.addWidget(drag_info)
         
         self.center_btn = QPushButton("Set Center")
         self.center_btn.setMinimumHeight(60)
@@ -741,17 +765,90 @@ class CalibrationScreen(QWidget):
             f"Use 'python scripts/optimize_parameters.py' to find optimal parameters!"
         )
     
-    def on_image_click(self, event) -> None:
-        """Handle click on image to set center."""
-        if not self.selecting_center:
+    def _initialize_control_points(self):
+        """Initialize control points at key ring/segment positions."""
+        if self.calibration is None:
             return
         
+        self.control_points = []
+        
+        # Key angles: 20 (top), 3 (right), 6 (bottom), 11 (left) = 0°, 90°, 180°, 270°
+        # Dartboard angles: top=90°, right=0° (or 18°), bottom=270°, left=180° (or 162°)
+        key_angles = [90, 18, 270, 162]  # Top, Right, Bottom, Left in dartboard coordinates
+        
+        rings = [
+            ("bull_eye", self.calibration.bull_eye_radius),
+            ("bull", self.calibration.bull_radius),
+            ("triple_inner", self.calibration.triple_inner_radius),
+            ("triple_outer", self.calibration.triple_outer_radius),
+            ("double_inner", self.calibration.double_inner_radius),
+            ("double_outer", self.calibration.double_outer_radius)
+        ]
+        
+        # Create control points for each ring at key angles
+        for ring_name, radius in rings:
+            for angle in key_angles:
+                # Calculate point position (without perspective transform for now)
+                angle_rad = np.radians(angle)
+                px = self.calibration.center_x + radius * np.cos(angle_rad)
+                py = self.calibration.center_y + radius * np.sin(angle_rad)
+                
+                self.control_points.append({
+                    "ring": ring_name,
+                    "angle": angle,
+                    "x": px,
+                    "y": py
+                })
+    
+    def toggle_drag_mode(self):
+        """Toggle drag mode on/off."""
+        self.drag_mode_enabled = self.drag_mode_btn.isChecked()
+        
+        if self.drag_mode_enabled:
+            self.drag_mode_btn.setText("✋ Drag Mode Active")
+            self.drag_mode_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+            self._initialize_control_points()  # Refresh points
+            self._update_calibration_from_points()  # Calculate initial ellipses
+            # Disable sliders in drag mode
+            self.bull_eye_slider.setEnabled(False)
+            self.bull_slider.setEnabled(False)
+            self.triple_inner_slider.setEnabled(False)
+            self.triple_outer_slider.setEnabled(False)
+            self.double_inner_slider.setEnabled(False)
+            self.double_outer_slider.setEnabled(False)
+            self.scale_x_slider.setEnabled(False)
+            self.scale_y_slider.setEnabled(False)
+            self.rotation_slider.setEnabled(False)
+            self.skew_x_slider.setEnabled(False)
+            self.skew_y_slider.setEnabled(False)
+            self.triple_scale_slider.setEnabled(False)
+            self.double_scale_slider.setEnabled(False)
+        else:
+            self.drag_mode_btn.setText("🎯 Enable Drag Mode")
+            self.drag_mode_btn.setStyleSheet("background-color: #9E9E9E; color: white; font-weight: bold;")
+            self.dragging_point = None
+            self.ring_ellipses = {}  # Clear ellipses
+            # Re-enable sliders
+            self.bull_eye_slider.setEnabled(True)
+            self.bull_slider.setEnabled(True)
+            self.triple_inner_slider.setEnabled(True)
+            self.triple_outer_slider.setEnabled(True)
+            self.double_inner_slider.setEnabled(True)
+            self.double_outer_slider.setEnabled(True)
+            self.scale_x_slider.setEnabled(True)
+            self.scale_y_slider.setEnabled(True)
+            self.rotation_slider.setEnabled(True)
+            self.skew_x_slider.setEnabled(True)
+            self.skew_y_slider.setEnabled(True)
+            self.triple_scale_slider.setEnabled(True)
+            self.double_scale_slider.setEnabled(True)
+        
+        self.update_image_display()
+    
+    def _display_to_original_coords(self, display_x: int, display_y: int) -> tuple:
+        """Convert display coordinates to original image coordinates."""
         if self.camera_image is None or self.displayed_pixmap is None:
-            return
-        
-        # Get click position on displayed image
-        click_x = event.pos().x()
-        click_y = event.pos().y()
+            return (0, 0)
         
         # Get displayed image size
         display_width = self.displayed_pixmap.width()
@@ -764,30 +861,214 @@ class CalibrationScreen(QWidget):
         scale_x = original_width / display_width
         scale_y = original_height / display_height
         
-        # Map click coordinates to original image coordinates
-        original_x = int(click_x * scale_x)
-        original_y = int(click_y * scale_y)
+        # Map coordinates
+        original_x = int(display_x * scale_x)
+        original_y = int(display_y * scale_y)
         
         # Clamp to image bounds
         original_x = max(0, min(original_x, original_width - 1))
         original_y = max(0, min(original_y, original_height - 1))
         
-        # Update calibration
-        self.calibration.center_x = original_x
-        self.calibration.center_y = original_y
+        return (original_x, original_y)
+    
+    def _original_to_display_coords(self, original_x: float, original_y: float) -> tuple:
+        """Convert original image coordinates to display coordinates."""
+        if self.camera_image is None or self.displayed_pixmap is None:
+            return (0, 0)
         
-        # Auto-save calibration
-        self.app.mapper.set_calibration(self.calibration)
-        self.app.save_calibration()
+        # Get displayed image size
+        display_width = self.displayed_pixmap.width()
+        display_height = self.displayed_pixmap.height()
         
-        # Update UI
-        self.center_label.setText(f"X: {original_x}, Y: {original_y}")
-        self.center_btn.setText("Set Center")
-        self.center_btn.setStyleSheet("")
-        self.selecting_center = False
+        # Get original image size
+        original_height, original_width = self.camera_image.shape[:2]
+        
+        # Calculate scale factors
+        scale_x = display_width / original_width
+        scale_y = display_height / original_height
+        
+        # Map coordinates
+        display_x = int(original_x * scale_x)
+        display_y = int(original_y * scale_y)
+        
+        return (display_x, display_y)
+    
+    def _find_nearest_control_point(self, x: int, y: int, threshold: int = 15) -> Optional[int]:
+        """Find control point near given position (in display coords)."""
+        nearest_idx = None
+        nearest_dist = threshold
+        
+        for idx, point in enumerate(self.control_points):
+            disp_x, disp_y = self._original_to_display_coords(point["x"], point["y"])
+            dist = np.sqrt((x - disp_x)**2 + (y - disp_y)**2)
+            if dist < nearest_dist:
+                nearest_dist = dist
+                nearest_idx = idx
+        
+        return nearest_idx
+    
+    def on_image_press(self, event) -> None:
+        """Handle mouse press on image."""
+        if self.camera_image is None or self.displayed_pixmap is None:
+            return
+        
+        click_x = event.pos().x()
+        click_y = event.pos().y()
+        
+        # Handle center selection mode
+        if self.selecting_center:
+            original_x, original_y = self._display_to_original_coords(click_x, click_y)
+            
+            # Update calibration
+            self.calibration.center_x = original_x
+            self.calibration.center_y = original_y
+            
+            # Auto-save calibration
+            self.app.mapper.set_calibration(self.calibration)
+            self.app.save_calibration()
+            
+            # Update UI
+            self.center_label.setText(f"X: {original_x}, Y: {original_y}")
+            self.center_btn.setText("Set Center")
+            self.center_btn.setStyleSheet("")
+            self.selecting_center = False
+            
+            # Refresh control points and display
+            self._initialize_control_points()
+            self.update_image_display()
+            return
+        
+        # Handle drag mode
+        if self.drag_mode_enabled:
+            point_idx = self._find_nearest_control_point(click_x, click_y)
+            if point_idx is not None:
+                self.dragging_point = point_idx
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+    
+    def on_image_move(self, event) -> None:
+        """Handle mouse move on image."""
+        if not self.drag_mode_enabled or self.dragging_point is None:
+            return
+        
+        if self.camera_image is None or self.displayed_pixmap is None:
+            return
+        
+        # Get mouse position
+        mouse_x = event.pos().x()
+        mouse_y = event.pos().y()
+        
+        # Convert to original coordinates
+        original_x, original_y = self._display_to_original_coords(mouse_x, mouse_y)
+        
+        # Update control point position
+        self.control_points[self.dragging_point]["x"] = original_x
+        self.control_points[self.dragging_point]["y"] = original_y
+        
+        # Update calibration from control points
+        self._update_calibration_from_points()
         
         # Refresh display
         self.update_image_display()
+    
+    def on_image_release(self, event) -> None:
+        """Handle mouse release on image."""
+        if self.dragging_point is not None:
+            self.dragging_point = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            
+            # Save calibration after drag complete
+            self.app.mapper.set_calibration(self.calibration)
+            self.app.save_calibration()
+    
+    def _fit_ellipse_from_points(self, points):
+        """Fit ellipse parameters from control points.
+        Returns: (center_x, center_y, width, height, angle)
+        """
+        if len(points) < 3:
+            return None
+        
+        # Extract point coordinates
+        coords = np.array([[p["x"], p["y"]] for p in points], dtype=np.float32)
+        
+        # Fit ellipse using OpenCV
+        if len(coords) >= 5:
+            ellipse = cv2.fitEllipse(coords)
+            # ellipse = ((cx, cy), (width, height), angle)
+            return ellipse
+        else:
+            # Not enough points for fitEllipse, use bounding ellipse
+            center = coords.mean(axis=0)
+            # Calculate distances to estimate axes
+            dists = np.sqrt(((coords - center)**2).sum(axis=1))
+            avg_radius = dists.mean()
+            return ((center[0], center[1]), (avg_radius*2, avg_radius*2), 0)
+    
+    def _update_calibration_from_points(self):
+        """Update calibration parameters based on control point positions."""
+        if self.calibration is None or len(self.control_points) == 0:
+            return
+        
+        # Group points by ring
+        rings_points = {}
+        for point in self.control_points:
+            ring = point["ring"]
+            if ring not in rings_points:
+                rings_points[ring] = []
+            rings_points[ring].append(point)
+        
+        # Store ellipse parameters for each ring (for drawing)
+        self.ring_ellipses = {}
+        
+        center_x = self.calibration.center_x
+        center_y = self.calibration.center_y
+        
+        for ring_name, points in rings_points.items():
+            # Fit ellipse to points
+            ellipse = self._fit_ellipse_from_points(points)
+            if ellipse:
+                self.ring_ellipses[ring_name] = ellipse
+                
+                # Calculate average radius for calibration (for compatibility)
+                (cx, cy), (w, h), angle = ellipse
+                avg_radius = (w + h) / 4.0  # Average of semi-axes
+                
+                # Update calibration with average radius
+                if ring_name == "bull_eye":
+                    self.calibration.bull_eye_radius = avg_radius
+                    self.bull_eye_slider.blockSignals(True)
+                    self.bull_eye_slider.setValue(int(avg_radius))
+                    self.bull_eye_label.setText(f"{int(avg_radius)} px")
+                    self.bull_eye_slider.blockSignals(False)
+                elif ring_name == "bull":
+                    self.calibration.bull_radius = avg_radius
+                    self.bull_slider.blockSignals(True)
+                    self.bull_slider.setValue(int(avg_radius))
+                    self.bull_label.setText(f"{int(avg_radius)} px")
+                    self.bull_slider.blockSignals(False)
+                elif ring_name == "triple_inner":
+                    self.calibration.triple_inner_radius = avg_radius
+                    self.triple_inner_slider.blockSignals(True)
+                    self.triple_inner_slider.setValue(int(avg_radius / self.triple_scale))
+                    self.triple_inner_label.setText(f"{int(avg_radius / self.triple_scale)} px")
+                    self.triple_inner_slider.blockSignals(False)
+                elif ring_name == "triple_outer":
+                    self.calibration.triple_outer_radius = avg_radius
+                    self.triple_outer_slider.blockSignals(True)
+                    self.triple_outer_slider.setValue(int(avg_radius / self.triple_scale))
+                    self.triple_outer_label.setText(f"{int(avg_radius / self.triple_scale)} px")
+                    self.triple_outer_slider.blockSignals(False)
+                elif ring_name == "double_inner":
+                    self.calibration.double_inner_radius = avg_radius
+                    self.double_inner_slider.blockSignals(True)
+                    self.double_inner_slider.setValue(int(avg_radius / self.double_scale))
+                    self.double_inner_label.setText(f"{int(avg_radius / self.double_scale)} px")
+                    self.double_inner_slider.blockSignals(False)
+                elif ring_name == "double_outer":
+                    self.calibration.double_outer_radius = avg_radius
+                    self.double_outer_slider.blockSignals(True)
+                    self.double_outer_slider.setValue(int(avg_radius / self.double_scale))
+                    self.double_outer_label.setText(f"{int(avg_radius / self.double_scale)} px")
+                    self.double_outer_slider.blockSignals(False)
     
     def on_bull_eye_changed(self, value: int) -> None:
         """Handle bull's eye radius slider change."""
@@ -955,28 +1236,68 @@ class CalibrationScreen(QWidget):
         double_inner = int(self.calibration.double_inner_radius)
         double_outer = int(self.calibration.double_outer_radius)
         
-        # Draw rings as ellipses (applying perspective transformation with skew)
-        # Format for cv2.ellipse: (center, (width, height), rotation, start_angle, end_angle, color, thickness)
-        
-        def draw_ellipse_ring(radius, color, thickness=2):
-            # Apply skew by adjusting the center for each radius
-            skewed_center = (
-                int(center[0] + radius * self.skew_x),
-                int(center[1] + radius * self.skew_y)
-            )
-            axes = (int(radius * self.scale_x), int(radius * self.scale_y))
-            cv2.ellipse(display_image, skewed_center, axes, self.rotation, 0, 360, color, thickness)
-        
-        # Draw all rings
-        draw_ellipse_ring(bull_eye, (0, 255, 0), 2)      # Green
-        draw_ellipse_ring(bull, (0, 255, 255), 2)        # Cyan
-        draw_ellipse_ring(triple_inner, (255, 255, 0), 2) # Yellow
-        draw_ellipse_ring(triple_outer, (255, 255, 0), 2) # Yellow
-        draw_ellipse_ring(double_inner, (255, 0, 0), 2)  # Blue
-        draw_ellipse_ring(double_outer, (255, 0, 0), 2)  # Blue
+        # Draw rings - use fitted ellipses if in drag mode, otherwise use transformed circles
+        if self.drag_mode_enabled and hasattr(self, 'ring_ellipses') and self.ring_ellipses:
+            # Draw fitted ellipses from control points
+            ring_configs = [
+                ("bull_eye", (0, 255, 0), 2),
+                ("bull", (0, 255, 255), 2),
+                ("triple_inner", (255, 255, 0), 2),
+                ("triple_outer", (255, 255, 0), 2),
+                ("double_inner", (255, 0, 0), 2),
+                ("double_outer", (255, 0, 0), 2)
+            ]
+            
+            for ring_name, color, thickness in ring_configs:
+                if ring_name in self.ring_ellipses:
+                    ellipse = self.ring_ellipses[ring_name]
+                    (cx, cy), (w, h), angle = ellipse
+                    center_pt = (int(cx), int(cy))
+                    axes = (int(w/2), int(h/2))
+                    cv2.ellipse(display_image, center_pt, axes, angle, 0, 360, color, thickness)
+        else:
+            # Draw rings as ellipses (applying perspective transformation with skew)
+            def draw_ellipse_ring(radius, color, thickness=2):
+                # Apply skew by adjusting the center for each radius
+                skewed_center = (
+                    int(center[0] + radius * self.skew_x),
+                    int(center[1] + radius * self.skew_y)
+                )
+                axes = (int(radius * self.scale_x), int(radius * self.scale_y))
+                cv2.ellipse(display_image, skewed_center, axes, self.rotation, 0, 360, color, thickness)
+            
+            # Draw all rings
+            draw_ellipse_ring(bull_eye, (0, 255, 0), 2)      # Green
+            draw_ellipse_ring(bull, (0, 255, 255), 2)        # Cyan
+            draw_ellipse_ring(triple_inner, (255, 255, 0), 2) # Yellow
+            draw_ellipse_ring(triple_outer, (255, 255, 0), 2) # Yellow
+            draw_ellipse_ring(double_inner, (255, 0, 0), 2)  # Blue
+            draw_ellipse_ring(double_outer, (255, 0, 0), 2)  # Blue
         
         # Draw center cross
         cv2.drawMarker(display_image, center, (0, 255, 0), cv2.MARKER_CROSS, 20, 2)
+        
+        # Draw control points if drag mode is enabled
+        if self.drag_mode_enabled and len(self.control_points) > 0:
+            for idx, point in enumerate(self.control_points):
+                px = int(point["x"])
+                py = int(point["y"])
+                
+                # Different colors for different rings
+                if point["ring"] in ["bull_eye", "bull"]:
+                    color = (0, 255, 0)  # Green
+                elif point["ring"] in ["triple_inner", "triple_outer"]:
+                    color = (255, 255, 0)  # Yellow
+                else:  # double rings
+                    color = (255, 0, 0)  # Blue
+                
+                # Highlight dragging point
+                if idx == self.dragging_point:
+                    cv2.circle(display_image, (px, py), 12, (0, 255, 255), -1)  # Filled cyan
+                    cv2.circle(display_image, (px, py), 14, (255, 255, 255), 2)  # White border
+                else:
+                    cv2.circle(display_image, (px, py), 8, color, -1)  # Filled circle
+                    cv2.circle(display_image, (px, py), 10, (255, 255, 255), 2)  # White border
         
         # Draw all 20 segment lines (also transformed)
         segment_angles = [9, 27, 45, 63, 81, 99, 117, 135, 153, 171, 189, 207, 225, 243, 261, 279, 297, 315, 333, 351]
